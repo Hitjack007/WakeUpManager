@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import WakeUpCore
 
 // MARK: - Intensity and state
 
@@ -29,12 +30,14 @@ enum Intensity: String, Equatable {
         }
     }
 
-    /// The mockup applies the same limits as the design doc: low is up to 30% CPU, 50% GPU and 2 hours;
-    /// high is above 80% CPU, 80% GPU or 3 hours; everything else is medium.
+    /// Uses the real classification from WakeUpCore (low is up to 30% CPU, 50% GPU and 2 hours; high is
+    /// above 80% CPU, 80% GPU or 3 hours; everything else is medium).
     static func classify(cpu: Int, gpu: Int, minutes: Int) -> Intensity {
-        if cpu > 80 || gpu > 80 || minutes > 180 { return .high }
-        if cpu <= 30 && gpu <= 50 && minutes <= 120 { return .low }
-        return .medium
+        switch IntensityLevel.classify(expectedCpuPercent: cpu, expectedGpuPercent: gpu, estimatedDurationMinutes: minutes) {
+        case .low: .low
+        case .medium: .medium
+        case .high: .high
+        }
     }
 }
 

@@ -458,7 +458,14 @@ Where the doc was silent, the engine makes these choices. All are easy to change
 | Completion with `reschedule` | Plans a one-off follow-up and books its wake. |
 | Revoking a client | Cancels its future runs and wakes and stops anything it has running. |
 
-Not built yet: merging nearby wakes into one, a rolling safety wake while a job runs (nightshift's trick), measuring actual CPU and GPU, and the real ports.
+Real ports built in `WakeUpSystem`:
+
+- `ProcessJobLauncher`: runs exec jobs as child processes with a small environment, their working directory, `WAKEUP_EXECUTION_ID` and `WAKEUP_SOCKET`, and a log file per execution. Opens apps by bundle id. Terminate sends SIGTERM, then SIGKILL after a grace period. Limitation: it terminates the job's own process, not any children it started.
+- `BatteryPowerSensor`: reads the power source and battery level from IOKit. A Mac with no battery (like this iMac) reports as plugged in with no level.
+- `PowerAssertionHolder`: the same three assertions as `caffeinate -ims`. Verified against `pmset -g assertions`.
+- `PmsetWakeBooker`: books and cancels wakes with `sudo -n pmset schedule`. Interim: it only works while a passwordless sudo rule exists, and is replaced by the root helper.
+
+Not built yet: the root helper, the local connection (socket) and the `wakeup` command line tool, the real notifier, the agent that runs the engine in a loop, merging nearby wakes into one, a rolling safety wake while a job runs (nightshift's trick), and measuring actual CPU and GPU.
 
 ## Open items to decide
 
@@ -470,5 +477,5 @@ Not built yet: merging nearby wakes into one, a rolling safety wake while a job 
 - **Caffeinate:** How it fits in (keeping the Mac awake while a job runs?).
 - **Privileges / packaging:** Proposed: app + embedded user agent + embedded root helper, registered with `SMAppService`. Awaiting confirmation.
 - **Not yet covered:** overlapping jobs (parallel or sequential, based on intensity), scheduler restart reconciliation, and the FileVault and reboot behaviour.
-- **Code:** `WakeUpCore/` is a Swift package with 81 Swift Testing tests, all passing: the schema types, the schedule and daylight-saving resolver, intensity levels, the battery and missed-job policy, and the scheduler engine (see "Scheduler engine, as built"). It is not yet linked into the Xcode project.
+- **Code:** `WakeUpCore/` is a Swift package with two libraries and 100 Swift Testing tests, all passing. `WakeUpCore` (81 tests) has the schema types, the schedule and daylight-saving resolver, intensity levels, the battery and missed-job policy, and the scheduler engine (see "Scheduler engine, as built"). `WakeUpSystem` (19 tests) has the real connections to macOS: a job launcher, a battery reader, power assertions and an interim `pmset` wake booker. The package is linked into the Xcode project.
 - **Spike:** Done for the iMac (see "Spike results"). Battery gates, lid-closed behaviour and the Mac Studio still need testing, and need a MacBook for the first two.

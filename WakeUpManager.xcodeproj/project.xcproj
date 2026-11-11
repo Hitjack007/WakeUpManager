@@ -10,6 +10,12 @@
       "Base",
     ],
   },
+  "packages": [
+    {
+      "kind": "local",
+      "path": "WakeUpCore",
+    },
+  ],
   "files": [
     { "kind": "folder", "path": "WakeUpManager", "target-membership": [ "WakeUpManager" ] },
     {
@@ -30,6 +36,12 @@
         "compile-sources",
         "frameworks",
         "resources",
+      ],
+      "package-product-members": [
+        {
+          "product-name": "WakeUpCore",
+          "build-phase": { "build-phase": "frameworks" },
+        },
       ],
       "build-settings": {
         "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
