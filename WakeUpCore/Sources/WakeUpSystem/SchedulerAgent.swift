@@ -25,6 +25,16 @@ extension DispatchWallTime {
     }
 }
 
+/// What the agent does about wakes booked by other software.
+public enum WakeAuditMode: String, Sendable {
+    /// Don't look.
+    case off
+    /// Notice them and tell the user, but leave them in place.
+    case report
+    /// Cancel them (never Apple's, never the scheduler's own, never an owner the user has allowed).
+    case cancel
+}
+
 /// Runs the scheduler: owns the engine, listens on the socket, answers clients, and calls the engine again
 /// whenever something is due (and at least every few seconds as a safety net).
 ///
@@ -36,11 +46,28 @@ public final class SchedulerAgent: @unchecked Sendable {
         public var trustedControlPaths: [String]
         /// The longest the agent goes without checking the engine.
         public var safetyTickSeconds: TimeInterval
+        public var auditMode: WakeAuditMode
+        /// How often the booked wakes are checked for ones that aren't ours.
+        public var auditIntervalSeconds: TimeInterval
+        public var scheduleReader: (any ScheduleReading)?
+        public var eventCanceller: (any PowerEventCancelling)?
 
-        public init(socketPath: String, trustedControlPaths: [String] = [], safetyTickSeconds: TimeInterval = 30) {
+        public init(
+            socketPath: String,
+            trustedControlPaths: [String] = [],
+            safetyTickSeconds: TimeInterval = 30,
+            auditMode: WakeAuditMode = .off,
+            auditIntervalSeconds: TimeInterval = 30,
+            scheduleReader: (any ScheduleReading)? = nil,
+            eventCanceller: (any PowerEventCancelling)? = nil
+        ) {
             self.socketPath = socketPath
             self.trustedControlPaths = trustedControlPaths
             self.safetyTickSeconds = safetyTickSeconds
+            self.auditMode = auditMode
+            self.auditIntervalSeconds = auditIntervalSeconds
+            self.scheduleReader = scheduleReader
+            self.eventCanceller = eventCanceller
         }
     }
 
@@ -51,6 +78,7 @@ public final class SchedulerAgent: @unchecked Sendable {
     private let queue = DispatchQueue(label: "wakeup.agent.engine")
     private var timer: DispatchSourceTimer?
     private var server: UnixSocketServer?
+    private var lastAudit = Date.distantPast
 
     public init(
         engine: SchedulerEngine,
@@ -70,7 +98,7 @@ public final class SchedulerAgent: @unchecked Sendable {
         }
         try server.start()
         self.server = server
-        queue.sync { rearm(engine.advance(now: clock())) }
+        queue.sync { rearm(advanceAndAudit(now: clock())) }
     }
 
     public func stop() {
@@ -84,7 +112,7 @@ public final class SchedulerAgent: @unchecked Sendable {
 
     /// Advances the engine to now. Called by the timer; also callable directly.
     public func tick() {
-        queue.sync { rearm(engine.advance(now: clock())) }
+        queue.sync { rearm(advanceAndAudit(now: clock())) }
     }
 
     // MARK: Handling messages
@@ -93,7 +121,7 @@ public final class SchedulerAgent: @unchecked Sendable {
         queue.sync {
             let now = clock()
             let reply = process(message, peerProcess: pid, now: now)
-            rearm(engine.advance(now: now))
+            rearm(advanceAndAudit(now: now))
             return reply
         }
     }
@@ -128,7 +156,8 @@ public final class SchedulerAgent: @unchecked Sendable {
             engine.cancelJob(key: JobKey.make(clientPath: path, jobId: jobId), now: now)
             return .accepted()
 
-        case .approveClient, .denyClient, .revokeClient, .extend, .stop, .resolveConflict, .resolveNotice, .setJobSettings:
+        case .approveClient, .denyClient, .revokeClient, .extend, .stop, .resolveConflict, .resolveNotice,
+             .setJobSettings, .allowWakeOwner:
             guard let pid, verifier.isTrusted(peerProcess: pid, trustedPaths: configuration.trustedControlPaths) else {
                 return .failure("Only the WakeUp Manager app can do that.")
             }
@@ -162,6 +191,9 @@ public final class SchedulerAgent: @unchecked Sendable {
         case .setJobSettings:
             guard let key = message.jobKey, let settings = message.jobSettings else { return missing("a job key and settings") }
             engine.updateSettings(jobKey: key, to: settings)
+        case .allowWakeOwner:
+            guard let owner = message.owner, !owner.isEmpty else { return missing("an owner") }
+            engine.allowWakeOwner(owner)
         default:
             return .failure("That is not a control message.")
         }
@@ -188,7 +220,51 @@ public final class SchedulerAgent: @unchecked Sendable {
             clients: state.clients.values.sorted { $0.displayName < $1.displayName },
             executions: state.executions,
             recentHistory: Array(state.history.suffix(20).reversed()),
-            openNotices: state.notices.filter { !$0.resolved })
+            openNotices: state.notices.filter { !$0.resolved },
+            blockedWakes: Array(state.blockedWakes.suffix(50).reversed()),
+            allowedWakeOwners: state.allowedWakeOwners.sorted())
+    }
+
+    // MARK: Wakes booked by other software
+
+    private func advanceAndAudit(now: Date) -> Date? {
+        auditIfDue(now: now)
+        return engine.advance(now: now)
+    }
+
+    /// Looks at the booked power events and deals with future wakes that belong to neither the scheduler,
+    /// macOS, nor an owner the user has allowed. Only wakes are touched: not sleeps or shutdowns.
+    private func auditIfDue(now: Date) {
+        guard configuration.auditMode != .off, let reader = configuration.scheduleReader,
+              now.timeIntervalSince(lastAudit) >= configuration.auditIntervalSeconds else { return }
+        lastAudit = now
+        guard let events = try? reader.scheduledEvents() else { return }
+
+        let policy = engine.wakeOwnerPolicy
+        let wakeKinds: Set<String> = ["wake", "poweron", "wakepoweron"]
+        for event in events where event.date > now && wakeKinds.contains(event.kind) {
+            guard policy.classify(owner: event.owner) == .foreign else { continue }
+
+            switch configuration.auditMode {
+            case .off:
+                break
+            case .report:
+                engine.recordForeignWake(owner: event.owner, kind: event.kind, wakeAt: event.date, outcome: .reported, now: now)
+            case .cancel:
+                guard let canceller = configuration.eventCanceller else {
+                    engine.recordForeignWake(owner: event.owner, kind: event.kind, wakeAt: event.date, outcome: .reported, now: now)
+                    continue
+                }
+                do {
+                    try canceller.cancelEvent(kind: event.kind, at: event.date, owner: event.owner)
+                    engine.recordForeignWake(owner: event.owner, kind: event.kind, wakeAt: event.date, outcome: .cancelled, now: now)
+                } catch {
+                    engine.recordForeignWake(
+                        owner: event.owner, kind: event.kind, wakeAt: event.date, outcome: .cancelFailed,
+                        detail: error.localizedDescription, now: now)
+                }
+            }
+        }
     }
 
     // MARK: Timer
@@ -206,7 +282,7 @@ public final class SchedulerAgent: @unchecked Sendable {
         source.schedule(wallDeadline: DispatchWallTime(date: next), leeway: .milliseconds(20))
         source.setEventHandler { [weak self] in
             guard let self else { return }
-            rearm(engine.advance(now: clock()))
+            rearm(advanceAndAudit(now: clock()))
         }
         source.resume()
         timer = source

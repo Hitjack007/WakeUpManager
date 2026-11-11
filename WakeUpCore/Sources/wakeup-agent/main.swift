@@ -20,11 +20,15 @@ struct Options {
     var dryRunWakes = false
     var notify = false
     var leadMinutes: Int?
+    /// What to do about wakes booked by other software. Off by default: turning it on cancels wakes that
+    /// other projects book for themselves until they have been moved onto the scheduler.
+    var auditMode = WakeAuditMode.off
+    var auditInterval: TimeInterval = 30
 }
 
 let usage = """
 Usage: wakeup-agent [--socket PATH] [--state PATH] [--logs DIR] [--trust PATH]... \
-[--lead-minutes N] [--dry-run-wakes] [--notify]
+[--lead-minutes N] [--dry-run-wakes] [--notify] [--audit off|report|cancel] [--audit-interval SECONDS]
 """
 
 func parseOptions(_ arguments: [String]) -> Options? {
@@ -41,6 +45,8 @@ func parseOptions(_ arguments: [String]) -> Options? {
         case "--logs": guard let value = next() else { return nil }; options.logsPath = value
         case "--trust": guard let value = next() else { return nil }; options.trusted.append(value)
         case "--lead-minutes": guard let value = next(), let minutes = Int(value) else { return nil }; options.leadMinutes = minutes
+        case "--audit": guard let value = next(), let mode = WakeAuditMode(rawValue: value) else { return nil }; options.auditMode = mode
+        case "--audit-interval": guard let value = next(), let seconds = TimeInterval(value), seconds > 0 else { return nil }; options.auditInterval = seconds
         case "--dry-run-wakes": options.dryRunWakes = true
         case "--notify": options.notify = true
         default: return nil
@@ -57,9 +63,12 @@ func log(_ text: String) {
     print("\(formatter.string(from: Date()))  \(text)")
 }
 
-struct LoggingWakeBooker: WakeBooking {
+struct LoggingWakeBooker: WakeBooking, PowerEventCancelling {
     func book(at date: Date, owner: String) throws { log("(dry run) would book a wake at \(date.formatted())") }
     func cancel(at date: Date, owner: String) throws { log("(dry run) would cancel the wake at \(date.formatted())") }
+    func cancelEvent(kind: String, at date: Date, owner: String) throws {
+        log("(dry run) would cancel the \(kind) event owned by \"\(owner)\" at \(date.formatted())")
+    }
 }
 
 func showNotification(_ notice: Notice) {
@@ -131,9 +140,13 @@ func runAgent() -> Int32 {
         ports: EnginePorts(
             wakes: wakes, awake: awake, launcher: launcher, power: BatteryPowerSensor(),
             notifier: notifier, store: store))
+    let canceller: any PowerEventCancelling = options.dryRunWakes ? LoggingWakeBooker() : PmsetWakeBooker()
     let agent = SchedulerAgent(
         engine: engine,
-        configuration: .init(socketPath: options.socketPath, trustedControlPaths: options.trusted))
+        configuration: .init(
+            socketPath: options.socketPath, trustedControlPaths: options.trusted,
+            auditMode: options.auditMode, auditIntervalSeconds: options.auditInterval,
+            scheduleReader: PmsetScheduleReader(), eventCanceller: canceller))
 
     do {
         try agent.start()
@@ -144,6 +157,11 @@ func runAgent() -> Int32 {
     log("listening on \(options.socketPath)")
     log("state in \(options.statePath), job logs in \(options.logsPath)")
     if options.dryRunWakes { log("dry run: the Mac's wake schedule will not be changed") }
+    switch options.auditMode {
+    case .off: break
+    case .report: log("wake audit: reporting wakes booked by other software, leaving them in place")
+    case .cancel: log("wake audit: cancelling wakes booked by other software (never Apple's)")
+    }
     if !options.trusted.isEmpty { log("control messages are accepted from: \(options.trusted.joined(separator: ", "))") }
 
     let runtime = Runtime(agent: agent, awake: awake)

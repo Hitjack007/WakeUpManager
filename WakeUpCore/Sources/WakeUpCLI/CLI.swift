@@ -24,6 +24,11 @@ public final class CLI {
       wakeup cancel --job-id ID [--client-path PATH]
       wakeup status [--json]
       wakeup ping
+      wakeup admin approve|deny|revoke --path PATH
+      wakeup admin stop --execution-id ID
+      wakeup admin extend --execution-id ID --minutes N
+      wakeup admin allow-wake-owner --owner TAG
+        (admin commands are only accepted from the WakeUp Manager app)
 
     Times are local wall-clock times (a job at 07:00 stays at 07:00 when daylight saving changes).
     The client is the project folder or app that owns the job; it defaults to the current directory, and
@@ -160,7 +165,7 @@ public final class CLI {
     /// developing, from a program it has been told to trust).
     private func admin(_ parsed: ParsedArguments) throws -> Int32 {
         guard parsed.positionals.count >= 2 else {
-            throw UsageError("admin needs a subcommand: approve, deny, revoke, extend, stop.")
+            throw UsageError("admin needs a subcommand: approve, deny, revoke, extend, stop, allow-wake-owner.")
         }
         let message: ClientMessage
         switch parsed.positionals[1] {
@@ -168,6 +173,7 @@ public final class CLI {
         case "deny": message = .denyClient(path: try parsed.required("path"))
         case "revoke": message = .revokeClient(path: try parsed.required("path"))
         case "stop": message = .stop(executionId: try executionId(parsed))
+        case "allow-wake-owner": message = .allowWakeOwner(try parsed.required("owner"))
         case "extend":
             guard let minutes = try parsed.integer("minutes") else { throw UsageError("--minutes is required.") }
             message = .extend(executionId: try executionId(parsed), minutes: minutes)
@@ -234,6 +240,16 @@ public final class CLI {
         for execution in status.recentHistory.prefix(10) {
             let note = execution.message.map { " - \($0)" } ?? ""
             lines.append("  \(format(execution.plannedStart))  \(execution.jobName)  [\(execution.state.rawValue)]\(note)")
+        }
+
+        if !status.blockedWakes.isEmpty {
+            lines.append("\nWakes booked by other software:")
+            for wake in status.blockedWakes.prefix(10) {
+                lines.append("  \(format(wake.wakeAt))  \(wake.owner)  [\(wake.outcome.rawValue)]")
+            }
+        }
+        if !status.allowedWakeOwners.isEmpty {
+            lines.append("\nAllowed to book their own wakes: \(status.allowedWakeOwners.joined(separator: ", "))")
         }
 
         if !status.openNotices.isEmpty {

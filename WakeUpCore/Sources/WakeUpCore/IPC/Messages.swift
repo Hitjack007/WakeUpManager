@@ -20,6 +20,7 @@ public struct ClientMessage: Codable, Equatable, Sendable {
         case resolveConflict
         case resolveNotice
         case setJobSettings
+        case allowWakeOwner
     }
 
     public var kind: Kind
@@ -34,6 +35,8 @@ public struct ClientMessage: Codable, Equatable, Sendable {
     public var minutes: Int?
     public var allowBoth: Bool?
     public var jobSettings: JobPowerSettings?
+    /// The owner tag, for `allowWakeOwner`.
+    public var owner: String?
 
     public init(
         kind: Kind,
@@ -46,7 +49,8 @@ public struct ClientMessage: Codable, Equatable, Sendable {
         noticeId: UUID? = nil,
         minutes: Int? = nil,
         allowBoth: Bool? = nil,
-        jobSettings: JobPowerSettings? = nil
+        jobSettings: JobPowerSettings? = nil,
+        owner: String? = nil
     ) {
         self.kind = kind
         self.request = request
@@ -59,12 +63,14 @@ public struct ClientMessage: Codable, Equatable, Sendable {
         self.minutes = minutes
         self.allowBoth = allowBoth
         self.jobSettings = jobSettings
+        self.owner = owner
     }
 
     public var isControl: Bool {
         switch kind {
         case .ping, .submit, .complete, .cancelJob, .status: false
-        case .approveClient, .denyClient, .revokeClient, .extend, .stop, .resolveConflict, .resolveNotice, .setJobSettings: true
+        case .approveClient, .denyClient, .revokeClient, .extend, .stop, .resolveConflict, .resolveNotice,
+             .setJobSettings, .allowWakeOwner: true
         }
     }
 
@@ -98,6 +104,10 @@ public struct ClientMessage: Codable, Equatable, Sendable {
     public static func setJobSettings(jobKey: String, settings: JobPowerSettings) -> ClientMessage {
         ClientMessage(kind: .setJobSettings, jobKey: jobKey, jobSettings: settings)
     }
+
+    public static func allowWakeOwner(_ owner: String) -> ClientMessage {
+        ClientMessage(kind: .allowWakeOwner, owner: owner)
+    }
 }
 
 /// A snapshot of the scheduler for the `status` message and the app's screens.
@@ -107,16 +117,21 @@ public struct StatusReport: Codable, Equatable, Sendable {
     public var executions: [Execution]
     public var recentHistory: [Execution]
     public var openNotices: [Notice]
+    public var blockedWakes: [BlockedWake]
+    public var allowedWakeOwners: [String]
 
     public init(
         holdingAwake: Bool, clients: [ClientRecord], executions: [Execution],
-        recentHistory: [Execution], openNotices: [Notice]
+        recentHistory: [Execution], openNotices: [Notice],
+        blockedWakes: [BlockedWake] = [], allowedWakeOwners: [String] = []
     ) {
         self.holdingAwake = holdingAwake
         self.clients = clients
         self.executions = executions
         self.recentHistory = recentHistory
         self.openNotices = openNotices
+        self.blockedWakes = blockedWakes
+        self.allowedWakeOwners = allowedWakeOwners
     }
 }
 

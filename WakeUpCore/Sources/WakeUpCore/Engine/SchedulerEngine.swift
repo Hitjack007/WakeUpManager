@@ -233,6 +233,56 @@ public final class SchedulerEngine {
         persist()
     }
 
+    // MARK: - Wakes booked by other software
+
+    /// How the audit tells our wakes, Apple's and the user's allowed ones from foreign ones.
+    public var wakeOwnerPolicy: WakeOwnerPolicy {
+        WakeOwnerPolicy(ourOwners: [settings.wakeOwner], allowedOwners: state.allowedWakeOwners)
+    }
+
+    /// Lets an owner tag book its own wakes. The audit leaves its events alone from now on.
+    public func allowWakeOwner(_ owner: String) {
+        state.allowedWakeOwners.insert(owner)
+        resolveNotices(kind: .blockedWake, matching: "\"\(owner)\"")
+        persist()
+    }
+
+    /// Records that the audit found a wake booked by someone else, and tells the user. Returns `false`
+    /// (and does nothing) if that same event was already recorded.
+    @discardableResult
+    public func recordForeignWake(
+        owner: String, kind: String, wakeAt: Date, outcome: BlockedWake.Outcome, detail: String? = nil, now: Date
+    ) -> Bool {
+        let alreadyKnown = state.blockedWakes.contains {
+            $0.owner == owner && $0.kind == kind && $0.wakeAt == wakeAt && $0.outcome == outcome
+        }
+        guard !alreadyKnown else { return false }
+
+        state.blockedWakes.append(BlockedWake(
+            owner: owner, kind: kind, wakeAt: wakeAt, handledAt: now, outcome: outcome, detail: detail))
+        if state.blockedWakes.count > settings.maxHistory {
+            state.blockedWakes.removeFirst(state.blockedWakes.count - settings.maxHistory)
+        }
+
+        let when = wakeAt.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
+        switch outcome {
+        case .cancelled:
+            addNotice(
+                .blockedWake, title: "Blocked a wake booked by another app",
+                detail: "An event owned by \"\(owner)\" for \(when) was cancelled. It was not one of Apple's.", now: now)
+        case .reported:
+            addNotice(
+                .blockedWake, title: "Another app has booked a wake",
+                detail: "An event owned by \"\(owner)\" is booked for \(when). It was left in place.", now: now)
+        case .cancelFailed:
+            addNotice(
+                .blockedWake, title: "Couldn't cancel a wake booked by another app",
+                detail: "An event owned by \"\(owner)\" for \(when) is still booked. \(detail ?? "")", now: now)
+        }
+        persist()
+        return true
+    }
+
     public func resolveNotice(id: UUID) {
         guard let index = state.notices.firstIndex(where: { $0.id == id }) else { return }
         state.notices[index].resolved = true

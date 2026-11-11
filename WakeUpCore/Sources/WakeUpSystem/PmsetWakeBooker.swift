@@ -83,3 +83,27 @@ public struct PmsetWakeBooker: WakeBooking {
         guard result.status == 0 else { throw PmsetError(status: result.status, output: result.output) }
     }
 }
+
+/// Cancels any kind of booked event, which the audit needs for wakes booked by other software.
+extension PmsetWakeBooker: PowerEventCancelling {
+    public func cancelEvent(kind: String, at date: Date, owner: String) throws {
+        try runPmset(["schedule", "cancel", kind, format(date), owner])
+    }
+}
+
+/// Reads the pending power events with `pmset -g sched` (no privileges needed).
+public struct PmsetScheduleReader: ScheduleReading {
+    public var runner: any CommandRunning
+    public var timeZone: TimeZone
+
+    public init(runner: any CommandRunning = ShellCommandRunner(), timeZone: TimeZone = .current) {
+        self.runner = runner
+        self.timeZone = timeZone
+    }
+
+    public func scheduledEvents() throws -> [ScheduledPowerEvent] {
+        let result = try runner.run("/usr/bin/pmset", arguments: ["-g", "sched"])
+        guard result.status == 0 else { throw PmsetError(status: result.status, output: result.output) }
+        return PmsetScheduleParser.parse(result.output, timeZone: timeZone)
+    }
+}

@@ -143,6 +143,7 @@ public struct Notice: Codable, Equatable, Sendable, Identifiable {
         case failed
         case batteryStopped
         case wakeBookingFailed
+        case blockedWake
     }
 
     public let id: UUID
@@ -175,6 +176,41 @@ public struct Notice: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
+/// A wake booked by something other than the scheduler that the audit noticed.
+public struct BlockedWake: Codable, Equatable, Sendable, Identifiable {
+    public enum Outcome: String, Codable, Equatable, Sendable {
+        /// The event was cancelled.
+        case cancelled
+        /// The event was noticed but left in place (the audit is in report-only mode).
+        case reported
+        /// Cancelling it failed.
+        case cancelFailed
+    }
+
+    public let id: UUID
+    /// The owner tag on the event, which says who booked it.
+    public var owner: String
+    /// The kind of event: `wake`, `poweron`, `sleep`, ...
+    public var kind: String
+    public var wakeAt: Date
+    public var handledAt: Date
+    public var outcome: Outcome
+    public var detail: String?
+
+    public init(
+        id: UUID = UUID(), owner: String, kind: String, wakeAt: Date, handledAt: Date,
+        outcome: Outcome, detail: String? = nil
+    ) {
+        self.id = id
+        self.owner = owner
+        self.kind = kind
+        self.wakeAt = wakeAt
+        self.handledAt = handledAt
+        self.outcome = outcome
+        self.detail = detail
+    }
+}
+
 public struct EngineState: Codable, Equatable, Sendable {
     public var clients: [String: ClientRecord] = [:]
     public var jobs: [String: JobEntry] = [:]
@@ -187,8 +223,30 @@ public struct EngineState: Codable, Equatable, Sendable {
     public var responses: [String: WakeResponse] = [:]
     /// Wakes the engine has booked through the helper and not yet seen fire or cancelled.
     public var bookedWakes: Set<Date> = []
+    /// Wakes booked by other software that the audit noticed, newest last.
+    public var blockedWakes: [BlockedWake] = []
+    /// Owner tags the user has said are allowed to book their own wakes.
+    public var allowedWakeOwners: Set<String> = []
 
     public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case clients, jobs, executions, history, notices, responses, bookedWakes, blockedWakes, allowedWakeOwners
+    }
+
+    /// Fields added after the first version are optional on disk, so older state files still load.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        clients = try c.decodeIfPresent([String: ClientRecord].self, forKey: .clients) ?? [:]
+        jobs = try c.decodeIfPresent([String: JobEntry].self, forKey: .jobs) ?? [:]
+        executions = try c.decodeIfPresent([Execution].self, forKey: .executions) ?? []
+        history = try c.decodeIfPresent([Execution].self, forKey: .history) ?? []
+        notices = try c.decodeIfPresent([Notice].self, forKey: .notices) ?? []
+        responses = try c.decodeIfPresent([String: WakeResponse].self, forKey: .responses) ?? [:]
+        bookedWakes = try c.decodeIfPresent(Set<Date>.self, forKey: .bookedWakes) ?? []
+        blockedWakes = try c.decodeIfPresent([BlockedWake].self, forKey: .blockedWakes) ?? []
+        allowedWakeOwners = try c.decodeIfPresent(Set<String>.self, forKey: .allowedWakeOwners) ?? []
+    }
 }
 
 /// Tunable values. The defaults follow the design doc.
