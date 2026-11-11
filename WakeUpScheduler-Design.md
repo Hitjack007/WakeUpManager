@@ -476,7 +476,24 @@ The agent, the socket and the `wakeup` tool are built and were run together on t
 
 Real run: a request from a project folder was held for approval, approved, planned, the Mac was held awake, the job started at its time, the job's own `wakeup done` reached the agent over the socket, and the hold was released. One bug found: the tool reported the folder as `/private/tmp/...` while the approval named `/tmp/...`, so the approval silently matched nothing. Fixed by canonicalising every client path the agent stores or compares, with tests.
 
-Not built yet: the root helper that replaces `sudo pmset`, running the agent and CLI from the app (embedding and registering them), the real macOS notifier, wiring the app's screens to the real scheduler, the Claude Code guard installer, merging nearby wakes into one, a rolling safety wake while a job runs (nightshift's trick), measuring actual CPU and GPU, and the foreign-wake audit.
+Not built yet: the root helper that replaces `sudo pmset`, running the agent and CLI from the app (embedding and registering them), the real macOS notifier, wiring the app's screens to the real scheduler, the Claude Code guard installer, merging nearby wakes into one, a rolling safety wake while a job runs (nightshift's trick), and measuring actual CPU and GPU.
+
+## Wakes booked by other software (audit), as built
+
+The agent can look for future wakes booked by anything other than the scheduler and macOS, using the approach from "Findings on blocking other wakes" (read `pmset -g sched`, cancel with the exact kind, time and owner).
+
+- **Reading:** `PmsetScheduleReader` runs `pmset -g sched` (no privileges) and `PmsetScheduleParser` turns each line into a `ScheduledPowerEvent` (kind, time, owner tag).
+- **Whose is it:** `WakeOwnerPolicy` classifies an owner tag as ours, Apple's (`com.apple.` prefix), allowed by the user, or foreign. The Apple prefix is only a string, so this stops the scheduler cancelling macOS's own wakes by mistake. It is not a security boundary.
+- **What it touches:** only future `wake`, `poweron` and `wakepoweron` events with a foreign owner. Sleeps and shutdowns are left alone. Keep-awake assertions are not looked at.
+- **Modes** (`wakeup-agent --audit off|report|cancel`, checked every 30 seconds, change with `--audit-interval`):
+  - `off` (default): doesn't look. Turning on `cancel` would cancel the NHL and nightshift wakes, so it stays off until those projects are on the scheduler.
+  - `report`: records the wake and tells the user, but leaves it booked.
+  - `cancel`: cancels it (needs root, so with the interim `sudo` booker it only works while that rule exists), records it and tells the user. If cancelling fails, that is recorded and the user is told.
+- **Record and notices:** each find is stored as a `BlockedWake` (owner, kind, time, outcome `cancelled`, `reported` or `cancelFailed`) and raises a notice. The same event isn't recorded twice. `status` shows the latest 50 and the allowed owners. In the `wakeup` tool, `status` lists them under "Wakes booked by other software".
+- **Allowing an owner:** `wakeup admin allow-wake-owner OWNER` (a control message, so trusted programs only) stops the audit touching that owner and resolves its notices.
+- **Dry run:** with `--dry-run-wakes` a cancel is only logged.
+
+Tests cover the parser, the owner classification, the engine's record, state files from before the audit, and the three agent modes (21 tests). Not yet run against a real foreign wake on this Mac.
 
 ## Open items to decide
 
@@ -488,5 +505,5 @@ Not built yet: the root helper that replaces `sudo pmset`, running the agent and
 - **Caffeinate:** How it fits in (keeping the Mac awake while a job runs?).
 - **Privileges / packaging:** Proposed: app + embedded user agent + embedded root helper, registered with `SMAppService`. Awaiting confirmation.
 - **Not yet covered:** overlapping jobs (parallel or sequential, based on intensity), scheduler restart reconciliation, and the FileVault and reboot behaviour.
-- **Code:** `WakeUpCore/` is a Swift package with 147 Swift Testing tests, all passing, and the whole chain proven on this Mac (see "Working end to end"). It has these parts: `WakeUpCore` (the schema types, the schedule and daylight-saving resolver, intensity levels, the battery and missed-job policy, the scheduler engine, the socket messages and client checks); `WakeUpSystem` (the job launcher, battery reader, power assertions, an interim `pmset` wake booker, the socket server and the scheduler agent); `WakeUpCLI` (the `wakeup` command); and two executables, `wakeup` and `wakeup-agent`. The package is linked into the Xcode project.
+- **Code:** `WakeUpCore/` is a Swift package with 168 Swift Testing tests, all passing, and the whole chain proven on this Mac (see "Working end to end"). It has these parts: `WakeUpCore` (the schema types, the schedule and daylight-saving resolver, intensity levels, the battery and missed-job policy, the scheduler engine, the socket messages and client checks); `WakeUpSystem` (the job launcher, battery reader, power assertions, an interim `pmset` wake booker, the socket server and the scheduler agent); `WakeUpCLI` (the `wakeup` command); and two executables, `wakeup` and `wakeup-agent`. The package is linked into the Xcode project.
 - **Spike:** Done for the iMac (see "Spike results"). Battery gates, lid-closed behaviour and the Mac Studio still need testing, and need a MacBook for the first two.
