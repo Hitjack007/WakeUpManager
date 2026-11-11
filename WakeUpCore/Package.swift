@@ -12,6 +12,8 @@ let package = Package(
         .executable(name: "wakeup", targets: ["wakeup"]),
         // The scheduler agent: runs the engine and listens on the socket.
         .executable(name: "wakeup-agent", targets: ["wakeup-agent"]),
+        // The root helper: books and cancels wakes over XPC for the agent.
+        .executable(name: "wakeup-helper", targets: ["wakeup-helper"]),
     ],
     targets: [
         .target(name: "WakeUpCore"),
@@ -23,5 +25,6 @@ let package = Package(
         .testTarget(name: "WakeUpCLITests", dependencies: ["WakeUpCLI", "WakeUpCore"]),
         .executableTarget(name: "wakeup", dependencies: ["WakeUpCLI", "WakeUpCore"]),
         .executableTarget(name: "wakeup-agent", dependencies: ["WakeUpSystem", "WakeUpCore"]),
+        .executableTarget(name: "wakeup-helper", dependencies: ["WakeUpSystem", "WakeUpCore"]),
     ]
 )

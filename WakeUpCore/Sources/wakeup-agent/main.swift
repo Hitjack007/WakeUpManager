@@ -24,12 +24,29 @@ struct Options {
     /// other projects book for themselves until they have been moved onto the scheduler.
     var auditMode = WakeAuditMode.off
     var auditInterval: TimeInterval = 30
+    /// Book and cancel wakes through the root helper instead of `sudo pmset`. Needs `team`.
+    var useHelper = false
+    /// The signing team that the helper must belong to, so the agent only trusts the real helper.
+    var team: String?
+    /// Write the agent's own log to `agent.log` in the logs folder. launchd throws standard output away.
+    var logToFile = false
 }
 
 let usage = """
 Usage: wakeup-agent [--socket PATH] [--state PATH] [--logs DIR] [--trust PATH]... \
-[--lead-minutes N] [--dry-run-wakes] [--notify] [--audit off|report|cancel] [--audit-interval SECONDS]
+[--lead-minutes N] [--dry-run-wakes] [--notify] [--audit off|report|cancel] [--audit-interval SECONDS] \
+[--helper --team TEAMID] [--log-to-file]
 """
+
+/// When the agent runs from inside the app (`Foo.app/Contents/Helpers/wakeup-agent`), that app is trusted
+/// to send control messages without being told where it is.
+func enclosingAppPath(ofExecutable path: String) -> String? {
+    let url = URL(fileURLWithPath: path).resolvingSymlinksInPath()
+    var parts = url.pathComponents
+    guard let index = parts.lastIndex(where: { $0.hasSuffix(".app") }) else { return nil }
+    parts = Array(parts[...index])
+    return NSString.path(withComponents: parts)
+}
 
 func parseOptions(_ arguments: [String]) -> Options? {
     var options = Options()
@@ -47,6 +64,9 @@ func parseOptions(_ arguments: [String]) -> Options? {
         case "--lead-minutes": guard let value = next(), let minutes = Int(value) else { return nil }; options.leadMinutes = minutes
         case "--audit": guard let value = next(), let mode = WakeAuditMode(rawValue: value) else { return nil }; options.auditMode = mode
         case "--audit-interval": guard let value = next(), let seconds = TimeInterval(value), seconds > 0 else { return nil }; options.auditInterval = seconds
+        case "--log-to-file": options.logToFile = true
+        case "--helper": options.useHelper = true
+        case "--team": guard let value = next(), !value.isEmpty else { return nil }; options.team = value
         case "--dry-run-wakes": options.dryRunWakes = true
         case "--notify": options.notify = true
         default: return nil
@@ -100,9 +120,22 @@ final class Runtime: @unchecked Sendable {
 }
 
 func runAgent() -> Int32 {
-    guard let options = parseOptions(Array(CommandLine.arguments.dropFirst())) else {
+    guard var options = parseOptions(Array(CommandLine.arguments.dropFirst())) else {
         FileHandle.standardError.write(Data((usage + "\n").utf8))
         return 64
+    }
+    if options.useHelper && options.team == nil {
+        FileHandle.standardError.write(Data("--helper needs --team, so the agent only talks to the real helper.\n".utf8))
+        return 64
+    }
+    if options.trusted.isEmpty, let executable = Bundle.main.executablePath, let app = enclosingAppPath(ofExecutable: executable) {
+        options.trusted = [app]
+    }
+    if options.logToFile {
+        try? FileManager.default.createDirectory(atPath: options.logsPath, withIntermediateDirectories: true)
+        let logFile = options.logsPath + "/agent.log"
+        freopen(logFile, "a", stdout)
+        freopen(logFile, "a", stderr)
     }
     setvbuf(stdout, nil, _IOLBF, 0)
 
@@ -125,7 +158,17 @@ func runAgent() -> Int32 {
 
     let awake = PowerAssertionHolder()
     let launcher = ProcessJobLauncher(socketPath: options.socketPath, logDirectory: URL(fileURLWithPath: options.logsPath))
-    let wakes: any WakeBooking = options.dryRunWakes ? LoggingWakeBooker() : PmsetWakeBooker()
+    // One booker does both jobs: booking the scheduler's wakes and cancelling other software's.
+    let booker: any WakeBooking & PowerEventCancelling
+    if options.dryRunWakes {
+        booker = LoggingWakeBooker()
+    } else if options.useHelper, let team = options.team {
+        booker = XPCWakeBooker(helperRequirement: WakeHelperConstants.requirement(
+            identifiers: [WakeHelperConstants.helperIdentifier], teamIdentifier: team))
+    } else {
+        booker = PmsetWakeBooker()
+    }
+    let wakes: any WakeBooking = booker
     let notify = options.notify
     let notifier = ClosureNotifier { notice in
         log("NOTICE \(notice.kind.rawValue): \(notice.title). \(notice.detail)")
@@ -140,7 +183,7 @@ func runAgent() -> Int32 {
         ports: EnginePorts(
             wakes: wakes, awake: awake, launcher: launcher, power: BatteryPowerSensor(),
             notifier: notifier, store: store))
-    let canceller: any PowerEventCancelling = options.dryRunWakes ? LoggingWakeBooker() : PmsetWakeBooker()
+    let canceller: any PowerEventCancelling = booker
     let agent = SchedulerAgent(
         engine: engine,
         configuration: .init(
