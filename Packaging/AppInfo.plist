@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://hitjack007.github.io/WakeUpManager/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>6xY6JsEkEG2HPn7hPwS457+wIYZ96Yc7NLR88xZsFPg=</string>
+</dict>
+</plist>

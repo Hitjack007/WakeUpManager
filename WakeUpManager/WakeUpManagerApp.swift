@@ -13,6 +13,7 @@ struct WakeUpManagerApp: App {
     @State private var permissions = PermissionsModel()
     @State private var claudeGuard = ClaudeGuardModel()
     @State private var commandLineTool = CommandLineToolModel()
+    @State private var softwareUpdater = SoftwareUpdater()
 
     /// The screens show what the scheduler agent reports, not dummy data.
     private static func makeLiveStore() -> SchedulerStore {
@@ -33,11 +34,13 @@ struct WakeUpManagerApp: App {
                 .environment(permissions)
                 .environment(claudeGuard)
                 .environment(commandLineTool)
+                .environment(softwareUpdater)
         }
 
         MenuBarExtra("WakeUp Manager", systemImage: "alarm") {
             MenuBarContent()
                 .environment(store)
+                .environment(softwareUpdater)
         }
     }
 }

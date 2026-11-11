@@ -4,9 +4,11 @@ set -euo pipefail
 # Usage: ./release.sh <version> "<notes>"
 # e.g.   ./release.sh 1.0.1 "Wake log reads the real history, settings are saved by the agent"
 #
-# Archives the app, wraps it in a DMG and publishes a GitHub release.
-# Set DRY_RUN=1 to stop after the DMG: nothing is committed, tagged or published (the version is bumped
-# only in a throwaway copy of the project file and restored afterwards).
+# Archives the app, wraps it in a DMG, signs it for Sparkle, adds it to docs/appcast.xml (served by
+# GitHub Pages, which is where installed copies look for updates) and publishes a GitHub release.
+# Run it from the main branch: the appcast is only served from there.
+# Set DRY_RUN=1 to stop after the DMG and its signature: nothing is committed, tagged or published (the
+# version is bumped only in a throwaway copy of the project file and restored afterwards).
 #
 # The app is signed with the project's development team, like the build you run from Xcode. A Mac other
 # than yours will refuse to open it until it is signed with a Developer ID certificate and notarized.
@@ -24,6 +26,7 @@ DMG_NAME="${APP_NAME}-${VERSION}.dmg"
 ARCHIVE_PATH="/tmp/${APP_NAME}-${VERSION}.xcarchive"
 DMG_PATH="/tmp/${DMG_NAME}"
 BUILD_NUM=$(date +%Y%m%d%H%M)
+APPCAST="$SCRIPT_DIR/docs/appcast.xml"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -42,6 +45,18 @@ fi
 
 if ! command -v create-dmg &>/dev/null; then
     echo "Error: create-dmg not found. Install with: brew install create-dmg"
+    exit 1
+fi
+
+SPARKLE_BIN=$(find ~/Library/Developer/Xcode/DerivedData -name "sign_update" -path "*/sparkle/*" 2>/dev/null | head -1)
+if [ -z "$SPARKLE_BIN" ]; then
+    echo "Error: Sparkle sign_update not found. Open the project in Xcode once to resolve packages."
+    exit 1
+fi
+echo "  sign_update: $SPARKLE_BIN"
+
+if [ "$DRY_RUN" != 1 ] && [ "$(git -C "$SCRIPT_DIR" branch --show-current)" != "main" ]; then
+    echo "Error: Releases are made from the main branch (GitHub Pages serves the appcast from there)."
     exit 1
 fi
 
@@ -165,28 +180,82 @@ if [ ! -f "$DMG_PATH" ]; then
 fi
 echo "  Created: $DMG_PATH ($(du -sh "$DMG_PATH" | cut -f1))"
 
+# ── Sparkle signing ───────────────────────────────────────────────────────────
+# The private key lives in the login keychain (made by Sparkle's generate_keys). Installed copies check
+# this signature against SUPublicEDKey in the app's Info.plist before they install anything.
+
+echo ""
+echo "→ Signing DMG with Sparkle..."
+SIGN_OUTPUT=$("$SPARKLE_BIN" "$DMG_PATH" 2>&1)
+ED_SIG=$(echo "$SIGN_OUTPUT" | grep -oE 'edSignature="[^"]+"' | head -1 | cut -d'"' -f2)
+FILE_LEN=$(echo "$SIGN_OUTPUT" | grep -oE 'length="[0-9]+"' | head -1 | cut -d'"' -f2)
+
+if [ -z "$ED_SIG" ] || [ -z "$FILE_LEN" ]; then
+    echo "Error: Could not parse Sparkle signature. Output was:"
+    echo "$SIGN_OUTPUT"
+    exit 1
+fi
+echo "  edSignature: ${ED_SIG:0:20}..."
+echo "  length: $FILE_LEN"
+
 if [ "$DRY_RUN" = 1 ]; then
     echo ""
     echo "Dry run finished. Nothing was committed or published."
     exit 0
 fi
 
+# ── Update appcast.xml ────────────────────────────────────────────────────────
+
+echo ""
+echo "→ Updating appcast.xml..."
+RELEASE_DATE=$(date -u "+%a, %d %b %Y %H:%M:%S +0000")
+REPO_URL=$(gh repo view --json url --jq .url)
+DOWNLOAD_URL="${REPO_URL}/releases/download/v${VERSION}/${DMG_NAME}"
+
+ITEM_FILE="/tmp/${APP_NAME}-appcast-item.xml"
+cat > "$ITEM_FILE" <<ITEMEOF
+
+    <item>
+      <title>Version ${VERSION}</title>
+      <pubDate>${RELEASE_DATE}</pubDate>
+      <sparkle:version>${BUILD_NUM}</sparkle:version>
+      <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>${MIN_OS_VERSION}</sparkle:minimumSystemVersion>
+      <enclosure
+        url="${DOWNLOAD_URL}"
+        sparkle:edSignature="${ED_SIG}"
+        length="${FILE_LEN}"
+        type="application/octet-stream"/>
+    </item>
+ITEMEOF
+
+# Put the new item just before the closing tag of the channel.
+awk -v itemfile="$ITEM_FILE" '
+    /<\/channel>/ && !done { while ((getline line < itemfile) > 0) print line; print ""; done = 1 }
+    { print }
+' "$APPCAST" > "$APPCAST.new"
+mv "$APPCAST.new" "$APPCAST"
+rm -f "$ITEM_FILE"
+echo "  Added v${VERSION} entry"
+
 # ── GitHub release ───────────────────────────────────────────────────────────
 
 echo ""
-echo "→ Pushing the version bump..."
+echo "→ Creating GitHub release v${VERSION}..."
 cd "$SCRIPT_DIR"
 git push
-
-echo ""
-echo "→ Creating GitHub release v${VERSION}..."
 gh release create "v${VERSION}" "$DMG_PATH" \
     --title "WakeUp Manager v${VERSION}" \
     --notes "$NOTES"
 
+echo ""
+echo "→ Publishing the appcast..."
+git add docs/appcast.xml
+git commit -m "Release v${VERSION}"
+git push
+
 # ── Done ─────────────────────────────────────────────────────────────────────
 
-REPO_URL=$(gh repo view --json url --jq .url)
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  v${VERSION} shipped!"

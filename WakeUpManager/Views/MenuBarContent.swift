@@ -7,6 +7,7 @@ import SwiftUI
 
 struct MenuBarContent: View {
     @Environment(SchedulerStore.self) private var store
+    @Environment(SoftwareUpdater.self) private var updater
 
     var body: some View {
         if let job = store.nextWakeJob, let wake = job.plannedWake {
@@ -22,6 +23,8 @@ struct MenuBarContent: View {
         if store.openAlertCount > 0 {
             Text("\(store.openAlertCount) alerts need attention")
         }
+        Button("Check for Updates…") { updater.checkForUpdates() }
+            .disabled(!updater.canCheckForUpdates)
         Button("Quit WakeUp Manager") {
             NSApplication.shared.terminate(nil)
         }

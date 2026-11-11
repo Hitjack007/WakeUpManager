@@ -126,4 +126,5 @@ struct DetailRouter: View {
         .environment(PermissionsModel())
         .environment(ClaudeGuardModel())
         .environment(CommandLineToolModel())
+        .environment(SoftwareUpdater())
 }

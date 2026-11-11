@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>WakeUp Manager</title>
+    <link>https://hitjack007.github.io/WakeUpManager/appcast.xml</link>
+    <description>WakeUp Manager releases</description>
+    <language>en</language>
+
+    <!-- release.sh adds an <item> here for each release. -->
+
+  </channel>
+</rss>

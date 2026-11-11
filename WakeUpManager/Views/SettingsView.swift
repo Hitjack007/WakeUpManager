@@ -16,6 +16,7 @@ struct SettingsView: View {
                     BatterySection(store: store)
                     IntensitySection()
                     TimingSection(store: store)
+                    UpdatesSection()
                     CommandLineToolSection()
                     ClaudeGuardSection()
                     HealthSection()
@@ -77,6 +78,27 @@ struct TimingSection: View {
             Text("Timing")
         } footer: {
             Text("A job that is later than this is skipped and you are alerted.")
+        }
+    }
+}
+
+// MARK: - Software updates
+
+struct UpdatesSection: View {
+    @Environment(SoftwareUpdater.self) private var updater
+
+    var body: some View {
+        @Bindable var updater = updater
+        Section {
+            Toggle("Automatically check for updates", isOn: $updater.automaticallyChecksForUpdates)
+            Toggle("Automatically download updates", isOn: $updater.automaticallyDownloadsUpdates)
+                .disabled(!updater.automaticallyChecksForUpdates)
+            Button("Check for Updates…") { updater.checkForUpdates() }
+                .disabled(!updater.canCheckForUpdates)
+        } header: {
+            Text("Software updates")
+        } footer: {
+            Text("Updates come from this app's GitHub releases and are checked against a signature before they are installed.")
         }
     }
 }
@@ -241,5 +263,6 @@ struct HealthRow: View {
         .environment(PermissionsModel())
         .environment(ClaudeGuardModel())
         .environment(CommandLineToolModel())
+        .environment(SoftwareUpdater())
         .frame(width: 700, height: 900)
 }
