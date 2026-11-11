@@ -381,6 +381,14 @@ public enum WakeUpJSON {
         return encoder
     }
 
+    /// One line, no pretty printing: used on the wire, where a newline ends a message.
+    public static func makeCompactEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }
+
     public static func makeDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601

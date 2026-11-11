@@ -13,6 +13,8 @@ public final class SchedulerEngine {
     private let ports: EnginePorts
     private let resolver: ScheduleResolver
     private var holdingAwake = false
+    /// Whether the engine is currently holding the Mac awake.
+    public var isHoldingAwake: Bool { holdingAwake }
     /// Jobs already told about a missed run during the current `advance`, so a Mac that was off for
     /// days produces one notice per job rather than one per missed run.
     private var missedNoticed: Set<String> = []
@@ -33,6 +35,7 @@ public final class SchedulerEngine {
 
     /// Handles a wake request. `verifiedClientPath` is the client's location as established by the
     /// connection (never taken from the request), and must match `request.client.path`.
+    @discardableResult
     public func submit(_ request: WakeRequest, verifiedClientPath: String, now: Date) -> WakeResponse {
         if let stored = state.responses[request.requestId.uuidString] { return stored }
         let response = handle(request, verifiedClientPath: verifiedClientPath, now: now)

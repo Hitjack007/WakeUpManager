@@ -1,0 +1,140 @@
+import Foundation
+
+// The messages exchanged over the local socket. One JSON object per line: the client sends a
+// `ClientMessage`, the scheduler answers with a `ServerMessage`, and the connection closes.
+
+public struct ClientMessage: Codable, Equatable, Sendable {
+    public enum Kind: String, Codable, Equatable, Sendable {
+        // Anyone on this Mac may send these (the agent still checks who they say they are).
+        case ping
+        case submit
+        case complete
+        case cancelJob
+        case status
+        // Control messages. Only the WakeUp Manager app may send these.
+        case approveClient
+        case denyClient
+        case revokeClient
+        case extend
+        case stop
+        case resolveConflict
+        case resolveNotice
+        case setJobSettings
+    }
+
+    public var kind: Kind
+    public var request: WakeRequest?
+    public var report: CompletionReport?
+    /// The client's location, for `cancelJob` and the client control messages.
+    public var clientPath: String?
+    public var jobId: String?
+    public var jobKey: String?
+    public var executionId: UUID?
+    public var noticeId: UUID?
+    public var minutes: Int?
+    public var allowBoth: Bool?
+    public var jobSettings: JobPowerSettings?
+
+    public init(
+        kind: Kind,
+        request: WakeRequest? = nil,
+        report: CompletionReport? = nil,
+        clientPath: String? = nil,
+        jobId: String? = nil,
+        jobKey: String? = nil,
+        executionId: UUID? = nil,
+        noticeId: UUID? = nil,
+        minutes: Int? = nil,
+        allowBoth: Bool? = nil,
+        jobSettings: JobPowerSettings? = nil
+    ) {
+        self.kind = kind
+        self.request = request
+        self.report = report
+        self.clientPath = clientPath
+        self.jobId = jobId
+        self.jobKey = jobKey
+        self.executionId = executionId
+        self.noticeId = noticeId
+        self.minutes = minutes
+        self.allowBoth = allowBoth
+        self.jobSettings = jobSettings
+    }
+
+    public var isControl: Bool {
+        switch kind {
+        case .ping, .submit, .complete, .cancelJob, .status: false
+        case .approveClient, .denyClient, .revokeClient, .extend, .stop, .resolveConflict, .resolveNotice, .setJobSettings: true
+        }
+    }
+
+    // MARK: Builders
+
+    public static func ping() -> ClientMessage { ClientMessage(kind: .ping) }
+    public static func status() -> ClientMessage { ClientMessage(kind: .status) }
+    public static func submit(_ request: WakeRequest) -> ClientMessage { ClientMessage(kind: .submit, request: request) }
+    public static func complete(_ report: CompletionReport) -> ClientMessage { ClientMessage(kind: .complete, report: report) }
+
+    public static func cancelJob(clientPath: String, jobId: String) -> ClientMessage {
+        ClientMessage(kind: .cancelJob, clientPath: clientPath, jobId: jobId)
+    }
+
+    public static func approveClient(path: String) -> ClientMessage { ClientMessage(kind: .approveClient, clientPath: path) }
+    public static func denyClient(path: String) -> ClientMessage { ClientMessage(kind: .denyClient, clientPath: path) }
+    public static func revokeClient(path: String) -> ClientMessage { ClientMessage(kind: .revokeClient, clientPath: path) }
+
+    public static func extend(executionId: UUID, minutes: Int) -> ClientMessage {
+        ClientMessage(kind: .extend, executionId: executionId, minutes: minutes)
+    }
+
+    public static func stop(executionId: UUID) -> ClientMessage { ClientMessage(kind: .stop, executionId: executionId) }
+
+    public static func resolveConflict(jobKey: String, allowBoth: Bool) -> ClientMessage {
+        ClientMessage(kind: .resolveConflict, jobKey: jobKey, allowBoth: allowBoth)
+    }
+
+    public static func resolveNotice(id: UUID) -> ClientMessage { ClientMessage(kind: .resolveNotice, noticeId: id) }
+
+    public static func setJobSettings(jobKey: String, settings: JobPowerSettings) -> ClientMessage {
+        ClientMessage(kind: .setJobSettings, jobKey: jobKey, jobSettings: settings)
+    }
+}
+
+/// A snapshot of the scheduler for the `status` message and the app's screens.
+public struct StatusReport: Codable, Equatable, Sendable {
+    public var holdingAwake: Bool
+    public var clients: [ClientRecord]
+    public var executions: [Execution]
+    public var recentHistory: [Execution]
+    public var openNotices: [Notice]
+
+    public init(
+        holdingAwake: Bool, clients: [ClientRecord], executions: [Execution],
+        recentHistory: [Execution], openNotices: [Notice]
+    ) {
+        self.holdingAwake = holdingAwake
+        self.clients = clients
+        self.executions = executions
+        self.recentHistory = recentHistory
+        self.openNotices = openNotices
+    }
+}
+
+public struct ServerMessage: Codable, Equatable, Sendable {
+    public var ok: Bool
+    public var response: WakeResponse?
+    public var status: StatusReport?
+    public var error: String?
+
+    public init(ok: Bool, response: WakeResponse? = nil, status: StatusReport? = nil, error: String? = nil) {
+        self.ok = ok
+        self.response = response
+        self.status = status
+        self.error = error
+    }
+
+    public static func accepted() -> ServerMessage { ServerMessage(ok: true) }
+    public static func answer(_ response: WakeResponse) -> ServerMessage { ServerMessage(ok: true, response: response) }
+    public static func report(_ status: StatusReport) -> ServerMessage { ServerMessage(ok: true, status: status) }
+    public static func failure(_ error: String) -> ServerMessage { ServerMessage(ok: false, error: error) }
+}

@@ -7,6 +7,11 @@ let package = Package(
     products: [
         .library(name: "WakeUpCore", targets: ["WakeUpCore"]),
         .library(name: "WakeUpSystem", targets: ["WakeUpSystem"]),
+        .library(name: "WakeUpCLI", targets: ["WakeUpCLI"]),
+        // The command line tool that scripts and apps use to ask for wakes.
+        .executable(name: "wakeup", targets: ["wakeup"]),
+        // The scheduler agent: runs the engine and listens on the socket.
+        .executable(name: "wakeup-agent", targets: ["wakeup-agent"]),
     ],
     targets: [
         .target(name: "WakeUpCore"),
@@ -14,5 +19,9 @@ let package = Package(
         // The real connections to macOS: launching jobs, the battery, power assertions, booking wakes.
         .target(name: "WakeUpSystem", dependencies: ["WakeUpCore"]),
         .testTarget(name: "WakeUpSystemTests", dependencies: ["WakeUpSystem", "WakeUpCore"]),
+        .target(name: "WakeUpCLI", dependencies: ["WakeUpCore"]),
+        .testTarget(name: "WakeUpCLITests", dependencies: ["WakeUpCLI", "WakeUpCore"]),
+        .executableTarget(name: "wakeup", dependencies: ["WakeUpCLI", "WakeUpCore"]),
+        .executableTarget(name: "wakeup-agent", dependencies: ["WakeUpSystem", "WakeUpCore"]),
     ]
 )

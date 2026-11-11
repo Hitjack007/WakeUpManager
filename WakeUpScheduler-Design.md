@@ -465,7 +465,18 @@ Real ports built in `WakeUpSystem`:
 - `PowerAssertionHolder`: the same three assertions as `caffeinate -ims`. Verified against `pmset -g assertions`.
 - `PmsetWakeBooker`: books and cancels wakes with `sudo -n pmset schedule`. Interim: it only works while a passwordless sudo rule exists, and is replaced by the root helper.
 
-Not built yet: the root helper, the local connection (socket) and the `wakeup` command line tool, the real notifier, the agent that runs the engine in a loop, merging nearby wakes into one, a rolling safety wake while a job runs (nightshift's trick), and measuring actual CPU and GPU.
+## Working end to end
+
+The agent, the socket and the `wakeup` tool are built and were run together on this Mac (11 Nov 2026):
+
+- **The agent** (`wakeup-agent`) runs the engine, listens on a Unix socket (`~/Library/Application Support/WakeUpManager/wakeup.sock`, readable only by the user) and keeps a wall-clock timer, so a deadline that passes while the Mac sleeps fires as soon as it wakes. State is saved to `state.json`. Options: `--dry-run-wakes` (say what would be booked, don't touch the wake schedule), `--trust PATH` (programs allowed to send control messages), `--notify` (macOS notifications), `--lead-minutes`.
+- **The wire protocol** is one JSON line each way. Ordinary messages are `submit`, `complete`, `cancelJob`, `status` and `ping`. Control messages (`approveClient`, `denyClient`, `revokeClient`, `extend`, `stop`, `resolveConflict`, `resolveNotice`, `setJobSettings`) are only accepted from programs inside a trusted location, which in production is the app itself.
+- **Who is calling:** a client names its location (project folder or app) and the agent checks the connecting process, or one of its ancestors, really is inside it (process table via libproc). Locations are canonicalised (`/tmp/x`, `/private/tmp/x/` and `/tmp/a/../x` are one client). Too-broad locations (`/`, `/Users`) can't be claimed.
+- **`wakeup`** has `request` (flags or a JSON file), `done`, `cancel`, `status`, `ping`, and `admin` for control messages. Exit codes: 0 done or authorised, 1 rejected, 2 can't reach the scheduler, 3 the scheduler refused, 10 waiting for approval, 11 overlap waiting for a decision, 64 wrong usage. Inside a job the scheduler sets `WAKEUP_EXECUTION_ID` and `WAKEUP_SOCKET`, so `wakeup done` needs no arguments.
+
+Real run: a request from a project folder was held for approval, approved, planned, the Mac was held awake, the job started at its time, the job's own `wakeup done` reached the agent over the socket, and the hold was released. One bug found: the tool reported the folder as `/private/tmp/...` while the approval named `/tmp/...`, so the approval silently matched nothing. Fixed by canonicalising every client path the agent stores or compares, with tests.
+
+Not built yet: the root helper that replaces `sudo pmset`, running the agent and CLI from the app (embedding and registering them), the real macOS notifier, wiring the app's screens to the real scheduler, the Claude Code guard installer, merging nearby wakes into one, a rolling safety wake while a job runs (nightshift's trick), measuring actual CPU and GPU, and the foreign-wake audit.
 
 ## Open items to decide
 
@@ -477,5 +488,5 @@ Not built yet: the root helper, the local connection (socket) and the `wakeup` c
 - **Caffeinate:** How it fits in (keeping the Mac awake while a job runs?).
 - **Privileges / packaging:** Proposed: app + embedded user agent + embedded root helper, registered with `SMAppService`. Awaiting confirmation.
 - **Not yet covered:** overlapping jobs (parallel or sequential, based on intensity), scheduler restart reconciliation, and the FileVault and reboot behaviour.
-- **Code:** `WakeUpCore/` is a Swift package with two libraries and 100 Swift Testing tests, all passing. `WakeUpCore` (81 tests) has the schema types, the schedule and daylight-saving resolver, intensity levels, the battery and missed-job policy, and the scheduler engine (see "Scheduler engine, as built"). `WakeUpSystem` (19 tests) has the real connections to macOS: a job launcher, a battery reader, power assertions and an interim `pmset` wake booker. The package is linked into the Xcode project.
+- **Code:** `WakeUpCore/` is a Swift package with 147 Swift Testing tests, all passing, and the whole chain proven on this Mac (see "Working end to end"). It has these parts: `WakeUpCore` (the schema types, the schedule and daylight-saving resolver, intensity levels, the battery and missed-job policy, the scheduler engine, the socket messages and client checks); `WakeUpSystem` (the job launcher, battery reader, power assertions, an interim `pmset` wake booker, the socket server and the scheduler agent); `WakeUpCLI` (the `wakeup` command); and two executables, `wakeup` and `wakeup-agent`. The package is linked into the Xcode project.
 - **Spike:** Done for the iMac (see "Spike results"). Battery gates, lid-closed behaviour and the Mac Studio still need testing, and need a MacBook for the first two.
