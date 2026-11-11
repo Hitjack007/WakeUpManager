@@ -400,7 +400,7 @@ public final class SchedulerEngine {
 
     /// Makes the booked wakes match the scheduled executions.
     private func reconcileWakes(now: Date) {
-        let desired = Set(state.executions.filter { $0.state == .scheduled && $0.wakeAt > now }.map(\.wakeAt))
+        let desired = neededWakes(now: now)
         for wake in state.bookedWakes where !desired.contains(wake) {
             // A wake that has already fired can't be cancelled; just forget it.
             if wake > now { try? ports.wakes.cancel(at: wake, owner: settings.wakeOwner) }
@@ -420,6 +420,52 @@ public final class SchedulerEngine {
                 }
             }
         }
+    }
+
+    /// The wakes that have to be booked. A job whose wake falls while an earlier job is expected to be
+    /// holding the Mac awake needs none of its own.
+    private func neededWakes(now: Date) -> Set<Date> {
+        let upcoming = state.executions
+            .filter { $0.state == .scheduled && $0.wakeAt > now }
+            .sorted { $0.wakeAt < $1.wakeAt }
+        guard settings.mergeNearbyWakes else { return Set(upcoming.map(\.wakeAt)) }
+
+        // The Mac is held awake until `coveredUntil`, by what is running (or already woken for) now and by
+        // the wakes kept so far.
+        var coveredUntil = state.executions
+            .filter { $0.state.isActive || ($0.state == .scheduled && $0.wakeAt <= now) }
+            .map { $0.estimateEnd ?? $0.plannedStart.addingTimeInterval(TimeInterval($0.estimatedMinutes * 60)) }
+            .max() ?? .distantPast
+        var needed: Set<Date> = []
+        for execution in upcoming {
+            if execution.wakeAt > coveredUntil { needed.insert(execution.wakeAt) }
+            let end = execution.plannedStart.addingTimeInterval(TimeInterval(execution.estimatedMinutes * 60))
+            coveredUntil = max(coveredUntil, end)
+        }
+        return needed
+    }
+
+    /// While a job runs, keeps a wake booked a few minutes ahead, moved forward every couple of minutes.
+    private func updateSafetyWake(now: Date) {
+        guard state.executions.contains(where: { $0.state.isActive }) else {
+            clearSafetyWake(now: now)
+            return
+        }
+        if let current = state.safetyWake,
+           now < current.addingTimeInterval(settings.safetyWakeRefreshSeconds - settings.safetyWakeAheadSeconds) {
+            return
+        }
+        let next = now.addingTimeInterval(settings.safetyWakeAheadSeconds)
+        guard (try? ports.wakes.book(at: next, owner: settings.wakeOwner)) != nil else { return }
+        clearSafetyWake(now: now)
+        state.safetyWake = next
+    }
+
+    private func clearSafetyWake(now: Date) {
+        guard let old = state.safetyWake else { return }
+        // One that has already fired can't be cancelled; just forget it.
+        if old > now { try? ports.wakes.cancel(at: old, owner: settings.wakeOwner) }
+        state.safetyWake = nil
     }
 
     // MARK: - Starting jobs
@@ -611,6 +657,7 @@ public final class SchedulerEngine {
     // MARK: - Holding the Mac awake
 
     private func updateHold(now: Date) {
+        updateSafetyWake(now: now)
         let anyActive = state.executions.contains { $0.state.isActive }
         let waking = state.executions.contains { execution in
             guard execution.state == .scheduled,
@@ -666,6 +713,9 @@ public final class SchedulerEngine {
             if let exited = execution.exitedAt {
                 candidates.append(exited.addingTimeInterval(settings.reportGraceSeconds))
             }
+        }
+        if let safety = state.safetyWake {
+            candidates.append(safety.addingTimeInterval(settings.safetyWakeRefreshSeconds - settings.safetyWakeAheadSeconds))
         }
         return candidates.filter { $0 > now }.min()
     }

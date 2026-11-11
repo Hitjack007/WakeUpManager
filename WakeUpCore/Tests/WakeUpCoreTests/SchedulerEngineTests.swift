@@ -502,7 +502,8 @@ struct ConflictTests {
         engine.submit(overlapping, verifiedClientPath: client, now: t("06:00"))
         engine.resolveConflict(jobKey: JobKey.make(clientPath: client, jobId: "b"), allowBoth: true, now: t("06:01"))
         #expect(engine.state.executions.count == 2)
-        #expect(world.bookedWakes.contains(t("07:10")))
+        // Job A is expected to hold the Mac awake then, so B needs no wake of its own.
+        #expect(!world.bookedWakes.contains(t("07:10")))
         #expect(engine.state.notices.filter { $0.kind == .conflict && !$0.resolved }.isEmpty)
     }
 
@@ -547,5 +548,94 @@ struct PersistenceTests {
         #expect(try store.load() == nil)
         try store.save(engine.state)
         #expect(try store.load() == engine.state)
+    }
+}
+
+@Suite("Merging nearby wakes")
+struct WakeMergingTests {
+    private func twoJobs(secondStart: String, merge: Bool = true) -> (SchedulerEngine, FakeWorld) {
+        let world = FakeWorld()
+        var settings = EngineSettings()
+        settings.mergeNearbyWakes = merge
+        let engine = EngineFixtures.makeEngine(world: world, settings: settings)
+        EngineFixtures.scheduled(EngineFixtures.request(job: "a", start: "2026-11-12T07:00:00", minutes: 30), engine: engine)
+        let response = engine.submit(
+            EngineFixtures.request(job: "b", start: "2026-11-12T\(secondStart)", minutes: 30),
+            verifiedClientPath: EngineFixtures.clientPath, now: t("06:00"))
+        if response.status == .conflict {
+            engine.resolveConflict(
+                jobKey: JobKey.make(clientPath: EngineFixtures.clientPath, jobId: "b"), allowBoth: true, now: t("06:01"))
+        }
+        return (engine, world)
+    }
+
+    @Test func aJobStartingWhileAnEarlierOneRunsNeedsNoWakeOfItsOwn() {
+        let (_, world) = twoJobs(secondStart: "07:20:00")
+        #expect(world.bookedWakes == [t("06:55")])
+    }
+
+    @Test func aJobAfterTheEarlierOneIsExpectedToEndGetsItsOwnWake() {
+        let (_, world) = twoJobs(secondStart: "08:00:00")
+        #expect(world.bookedWakes.sorted() == [t("06:55"), t("07:55")])
+    }
+
+    @Test func mergingCanBeTurnedOff() {
+        let (_, world) = twoJobs(secondStart: "07:20:00", merge: false)
+        #expect(world.bookedWakes.sorted() == [t("06:55"), t("07:15")])
+    }
+
+    @Test func whenTheEarlierJobEndsEarlyTheLaterWakeIsBooked() {
+        let (engine, world) = twoJobs(secondStart: "07:25:00")
+        engine.advance(now: t("07:00"))
+        #expect(!world.bookedWakes.contains(t("07:20")))
+
+        // A finishes after five minutes: B's wake is booked, since A no longer covers it.
+        world.statuses[world.lastHandle] = .exited(0)
+        engine.advance(now: t("07:05"))
+        #expect(world.bookedWakes.contains(t("07:20")))
+    }
+}
+
+@Suite("Rolling safety wake")
+struct SafetyWakeTests {
+    private func runningEngine() -> (SchedulerEngine, FakeWorld) {
+        let world = FakeWorld()
+        let engine = EngineFixtures.makeEngine(world: world)
+        EngineFixtures.scheduled(EngineFixtures.request(minutes: 60), engine: engine)
+        engine.advance(now: t("07:00"))
+        return (engine, world)
+    }
+
+    @Test func aWakeIsBookedFiveMinutesAheadWhileTheJobRuns() {
+        let (engine, world) = runningEngine()
+        #expect(world.bookedWakes.contains(t("07:05")))
+        #expect(engine.state.safetyWake == t("07:05"))
+    }
+
+    @Test func itIsMovedForwardEveryTwoMinutes() {
+        let (engine, world) = runningEngine()
+        engine.advance(now: t("07:01"))
+        #expect(engine.state.safetyWake == t("07:05"))
+
+        engine.advance(now: t("07:02"))
+        #expect(engine.state.safetyWake == t("07:07"))
+        #expect(!world.bookedWakes.contains(t("07:05")))
+        #expect(world.bookedWakes.contains(t("07:07")))
+    }
+
+    @Test func itIsCancelledWhenTheJobEnds() {
+        let (engine, world) = runningEngine()
+        world.statuses[world.lastHandle] = .exited(0)
+        engine.advance(now: t("07:01"))
+        engine.advance(now: t("07:02"))
+
+        #expect(engine.state.safetyWake == nil)
+        #expect(!world.bookedWakes.contains(t("07:07")))
+    }
+
+    @Test func theEngineAsksToBeWokenInTimeToRefreshIt() {
+        let (engine, _) = runningEngine()
+        let next = engine.advance(now: t("07:00"))
+        #expect(next.map { $0 <= t("07:02") } == true)
     }
 }

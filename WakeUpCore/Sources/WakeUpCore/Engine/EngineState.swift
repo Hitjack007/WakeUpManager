@@ -227,11 +227,13 @@ public struct EngineState: Codable, Equatable, Sendable {
     public var blockedWakes: [BlockedWake] = []
     /// Owner tags the user has said are allowed to book their own wakes.
     public var allowedWakeOwners: Set<String> = []
+    /// The rolling safety wake booked while a job runs, if one is booked.
+    public var safetyWake: Date?
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case clients, jobs, executions, history, notices, responses, bookedWakes, blockedWakes, allowedWakeOwners
+        case clients, jobs, executions, history, notices, responses, bookedWakes, blockedWakes, allowedWakeOwners, safetyWake
     }
 
     /// Fields added after the first version are optional on disk, so older state files still load.
@@ -246,6 +248,7 @@ public struct EngineState: Codable, Equatable, Sendable {
         bookedWakes = try c.decodeIfPresent(Set<Date>.self, forKey: .bookedWakes) ?? []
         blockedWakes = try c.decodeIfPresent([BlockedWake].self, forKey: .blockedWakes) ?? []
         allowedWakeOwners = try c.decodeIfPresent(Set<String>.self, forKey: .allowedWakeOwners) ?? []
+        safetyWake = try c.decodeIfPresent(Date.self, forKey: .safetyWake)
     }
 }
 
@@ -265,6 +268,13 @@ public struct EngineSettings: Equatable, Sendable {
     public var keepAwakeGapSeconds: TimeInterval = 10 * 60
     /// How many upcoming occurrences of each job are planned (and their wakes booked).
     public var planAhead = 2
+    /// While a job runs, a wake is kept booked this far ahead, so a Mac put to sleep by hand wakes itself
+    /// and carries on. The wake is moved forward every `safetyWakeRefreshSeconds`.
+    public var safetyWakeAheadSeconds: TimeInterval = 5 * 60
+    public var safetyWakeRefreshSeconds: TimeInterval = 2 * 60
+    /// Don't book a separate wake for a job that starts while an earlier job is expected to be holding
+    /// the Mac awake. If that earlier job ends early, the wake is booked then.
+    public var mergeNearbyWakes = true
     /// How often to check the battery while a job is running or waiting on the power rules.
     public var batteryPollSeconds: TimeInterval = 30
     public var maxHistory = 500

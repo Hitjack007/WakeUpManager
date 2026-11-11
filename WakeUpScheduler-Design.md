@@ -447,6 +447,8 @@ Where the doc was silent, the engine makes these choices. All are easy to change
 |---|---|
 | Planning ahead | The next 2 occurrences of each job are planned, and their wakes booked. |
 | Wake lead | 5 minutes before the start. |
+| Merging nearby wakes | A job whose wake falls while an earlier job is expected to be holding the Mac awake (from its wake to its start plus estimate) gets no wake of its own. If the earlier job ends early or never starts, the later wake is booked then. Can be turned off with `mergeNearbyWakes`. |
+| Safety wake | While a job runs, a wake is kept booked 5 minutes ahead and moved forward every 2 minutes, so a Mac put to sleep by hand wakes itself and the job carries on. Cancelled when no job is running. Uses the scheduler's own owner tag. |
 | Awake hold | Taken at the wake time, held through the job, and released when nothing needs it. If a hold is already on and the next job starts within 10 minutes, the hold bridges the gap instead of releasing. |
 | Startup check | An app that doesn't show up as running within 60 seconds is "did not start": the hold is released and the user is told. A newly opened app isn't judged before then. |
 | Exit without a report | For jobs that report their own completion, a process that exits without reporting gets 10 seconds for a late report, then counts as failed. |
@@ -476,7 +478,7 @@ The agent, the socket and the `wakeup` tool are built and were run together on t
 
 Real run: a request from a project folder was held for approval, approved, planned, the Mac was held awake, the job started at its time, the job's own `wakeup done` reached the agent over the socket, and the hold was released. One bug found: the tool reported the folder as `/private/tmp/...` while the approval named `/tmp/...`, so the approval silently matched nothing. Fixed by canonicalising every client path the agent stores or compares, with tests.
 
-Not built yet: the root helper that replaces `sudo pmset`, running the agent and CLI from the app (embedding and registering them), the real macOS notifier, wiring the app's screens to the real scheduler, the Claude Code guard installer, merging nearby wakes into one, a rolling safety wake while a job runs (nightshift's trick), and measuring actual CPU and GPU.
+Not built yet: the root helper that replaces `sudo pmset`, running the agent and CLI from the app (embedding and registering them), the real macOS notifier, wiring the app's screens to the real scheduler, the Claude Code guard installer, and measuring actual CPU and GPU.
 
 ## Wakes booked by other software (audit), as built
 
@@ -505,5 +507,5 @@ Tests cover the parser, the owner classification, the engine's record, state fil
 - **Caffeinate:** How it fits in (keeping the Mac awake while a job runs?).
 - **Privileges / packaging:** Proposed: app + embedded user agent + embedded root helper, registered with `SMAppService`. Awaiting confirmation.
 - **Not yet covered:** overlapping jobs (parallel or sequential, based on intensity), scheduler restart reconciliation, and the FileVault and reboot behaviour.
-- **Code:** `WakeUpCore/` is a Swift package with 168 Swift Testing tests, all passing, and the whole chain proven on this Mac (see "Working end to end"). It has these parts: `WakeUpCore` (the schema types, the schedule and daylight-saving resolver, intensity levels, the battery and missed-job policy, the scheduler engine, the socket messages and client checks); `WakeUpSystem` (the job launcher, battery reader, power assertions, an interim `pmset` wake booker, the socket server and the scheduler agent); `WakeUpCLI` (the `wakeup` command); and two executables, `wakeup` and `wakeup-agent`. The package is linked into the Xcode project.
+- **Code:** `WakeUpCore/` is a Swift package with 176 Swift Testing tests, all passing, and the whole chain proven on this Mac (see "Working end to end"). It has these parts: `WakeUpCore` (the schema types, the schedule and daylight-saving resolver, intensity levels, the battery and missed-job policy, the scheduler engine, the socket messages and client checks); `WakeUpSystem` (the job launcher, battery reader, power assertions, an interim `pmset` wake booker, the socket server and the scheduler agent); `WakeUpCLI` (the `wakeup` command); and two executables, `wakeup` and `wakeup-agent`. The package is linked into the Xcode project.
 - **Spike:** Done for the iMac (see "Spike results"). Battery gates, lid-closed behaviour and the Mac Studio still need testing, and need a MacBook for the first two.
