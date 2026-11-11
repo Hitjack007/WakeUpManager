@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct AlertsView: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         Group {
@@ -27,7 +27,7 @@ struct AlertsView: View {
 }
 
 struct OpenAlertsSection: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         if store.openAlerts.isEmpty {
@@ -42,7 +42,7 @@ struct OpenAlertsSection: View {
 }
 
 struct ResolvedAlertsSection: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         if !store.resolvedAlerts.isEmpty {
@@ -63,6 +63,7 @@ extension MockAlert.Kind {
         case .blockedWake: "hand.raised.fill"
         case .missed: "forward.end.fill"
         case .approval: "person.badge.shield.checkmark"
+        case .overlap: "calendar.badge.exclamationmark"
         }
     }
 
@@ -72,12 +73,13 @@ extension MockAlert.Kind {
         case .blockedWake: .orange
         case .missed: .secondary
         case .approval: .blue
+        case .overlap: .orange
         }
     }
 }
 
 struct AlertCard: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
     let alert: MockAlert
 
     var body: some View {
@@ -108,7 +110,7 @@ struct AlertCard: View {
 }
 
 struct AlertActions: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
     let alertID: String
     let kind: MockAlert.Kind
 
@@ -126,6 +128,10 @@ struct AlertActions: View {
                 Button("Approve") { store.approveFirstPending() }
                     .buttonStyle(.borderedProminent)
                 Button("Deny", role: .destructive) { store.denyFirstPending() }
+            case .overlap:
+                Button("Run both") { store.resolveOverlap(alertID: alertID, allowBoth: true) }
+                    .buttonStyle(.borderedProminent)
+                Button("Drop the new job", role: .destructive) { store.resolveOverlap(alertID: alertID, allowBoth: false) }
             case .missed:
                 Button("Dismiss") { store.resolve(alertID: alertID) }
             }
@@ -135,6 +141,6 @@ struct AlertActions: View {
 
 #Preview {
     AlertsView()
-        .environment(MockStore())
+        .environment(SchedulerStore())
         .frame(width: 800, height: 600)
 }

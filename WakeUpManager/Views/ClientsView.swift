@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct ClientsView: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         ScrollView {
@@ -22,7 +22,7 @@ struct ClientsView: View {
 }
 
 struct PendingClientsSection: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         if !store.pendingClients.isEmpty {
@@ -36,7 +36,7 @@ struct PendingClientsSection: View {
 }
 
 struct ApprovedClientsSection: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         Card(title: "Approved") {
@@ -53,7 +53,7 @@ struct ApprovedClientsSection: View {
 }
 
 struct DeniedClientsSection: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         if !store.deniedClients.isEmpty {
@@ -91,7 +91,7 @@ struct ClientIdentity: View {
 }
 
 struct PendingClientRow: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
     let client: MockClient
 
     var body: some View {
@@ -112,7 +112,7 @@ struct PendingClientRow: View {
 }
 
 struct ApprovedClientRow: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
     let client: MockClient
 
     var body: some View {
@@ -137,7 +137,7 @@ struct ApprovedClientRow: View {
 }
 
 struct DeniedClientRow: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
     let client: MockClient
 
     var body: some View {
@@ -152,6 +152,6 @@ struct DeniedClientRow: View {
 
 #Preview {
     ClientsView()
-        .environment(MockStore())
+        .environment(SchedulerStore())
         .frame(width: 800, height: 600)
 }

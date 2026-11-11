@@ -16,6 +16,7 @@ import UserNotifications
 
 enum PermissionKind: String, CaseIterable, Identifiable {
     case notifications
+    case openAtLogin
     case schedulerAgent
     case wakeHelper
 
@@ -24,6 +25,7 @@ enum PermissionKind: String, CaseIterable, Identifiable {
     var title: LocalizedStringResource {
         switch self {
         case .notifications: "Notifications"
+        case .openAtLogin: "Open at login"
         case .schedulerAgent: "Background scheduler"
         case .wakeHelper: "Wake helper"
         }
@@ -32,6 +34,7 @@ enum PermissionKind: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .notifications: "bell.badge"
+        case .openAtLogin: "menubar.rectangle"
         case .schedulerAgent: "alarm"
         case .wakeHelper: "powersleep"
         }
@@ -42,6 +45,8 @@ enum PermissionKind: String, CaseIterable, Identifiable {
         switch self {
         case .notifications:
             "Tells you when a job runs past its estimate, a run is skipped, another app books a wake, or a new app asks to be approved."
+        case .openAtLogin:
+            "Starts this app in the menu bar when you log in, so alerts reach you even when its window is closed."
         case .schedulerAgent:
             "Keeps the scheduler running in your login session so it can start jobs and hold the Mac awake while they run."
         case .wakeHelper:
@@ -54,6 +59,8 @@ enum PermissionKind: String, CaseIterable, Identifiable {
         switch self {
         case .notifications:
             "Only this app's own alerts. Nothing is read from other apps."
+        case .openAtLogin:
+            "Only the menu bar item and alerts. Switch it off any time in System Settings > Login Items."
         case .schedulerAgent:
             "Runs as you, not as an administrator. Switch it off any time in System Settings > Login Items."
         case .wakeHelper:
@@ -65,7 +72,7 @@ enum PermissionKind: String, CaseIterable, Identifiable {
     var allowTitle: LocalizedStringResource {
         switch self {
         case .notifications: "Allow Notifications"
-        case .schedulerAgent, .wakeHelper: "Allow in Login Items"
+        case .openAtLogin, .schedulerAgent, .wakeHelper: "Allow in Login Items"
         }
     }
 }
@@ -129,6 +136,8 @@ final class PermissionsModel {
             case .denied: return .denied
             default: return .allowed
             }
+        case .openAtLogin:
+            return Self.status(of: SMAppService.mainApp)
         case .schedulerAgent:
             return Self.status(of: SMAppService.agent(plistName: Self.agentPlistName))
         case .wakeHelper:
@@ -167,6 +176,9 @@ final class PermissionsModel {
                 }
             }
 
+        case .openAtLogin:
+            register(SMAppService.mainApp, name: "open at login")
+
         case .schedulerAgent:
             register(SMAppService.agent(plistName: Self.agentPlistName), name: "scheduler agent")
 
@@ -197,7 +209,7 @@ final class PermissionsModel {
             let bundleId = Bundle.main.bundleIdentifier ?? ""
             let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(bundleId)")
             if let url { NSWorkspace.shared.open(url) }
-        case .schedulerAgent, .wakeHelper:
+        case .openAtLogin, .schedulerAgent, .wakeHelper:
             SMAppService.openSystemSettingsLoginItems()
         }
     }

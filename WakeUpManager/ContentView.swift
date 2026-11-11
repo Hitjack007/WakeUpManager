@@ -36,7 +36,7 @@ enum SidebarSection: String, CaseIterable, Identifiable {
 }
 
 struct ContentView: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
     @State private var selection: SidebarSection? = .overview
 
     var body: some View {
@@ -84,7 +84,7 @@ struct SidebarList: View {
 
 /// A one-line status at the bottom of the sidebar: is the scheduler holding the Mac awake right now?
 struct AwakeFooter: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         HStack(spacing: 8) {
@@ -122,7 +122,8 @@ struct DetailRouter: View {
 
 #Preview {
     ContentView()
-        .environment(MockStore())
+        .environment(SchedulerStore())
         .environment(PermissionsModel())
         .environment(ClaudeGuardModel())
+        .environment(CommandLineToolModel())
 }

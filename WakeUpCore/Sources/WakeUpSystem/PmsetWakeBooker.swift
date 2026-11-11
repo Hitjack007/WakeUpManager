@@ -107,3 +107,18 @@ public struct PmsetScheduleReader: ScheduleReading {
         return PmsetScheduleParser.parse(result.output, timeZone: timeZone)
     }
 }
+
+/// Reads the wake history with `pmset -g log` (no privileges needed).
+public struct PmsetLogReader {
+    public var runner: any CommandRunning
+
+    public init(runner: any CommandRunning = ShellCommandRunner()) {
+        self.runner = runner
+    }
+
+    public func recentWakes(scheduledWakes: [Date] = []) throws -> [WakeLogEvent] {
+        let result = try runner.run("/usr/bin/pmset", arguments: ["-g", "log"])
+        guard result.status == 0 else { throw PmsetError(status: result.status, output: result.output) }
+        return WakeLogParser.parse(result.output, scheduledWakes: scheduledWakes)
+    }
+}

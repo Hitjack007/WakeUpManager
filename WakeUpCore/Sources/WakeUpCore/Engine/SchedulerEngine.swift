@@ -26,9 +26,26 @@ public final class SchedulerEngine {
         resolver: ScheduleResolver = ScheduleResolver()
     ) {
         self.state = state
+        var settings = settings
+        // What the user set in the app wins over the defaults the agent was started with.
+        state.userSettings?.apply(to: &settings)
         self.settings = settings
         self.ports = ports
         self.resolver = resolver
+    }
+
+    // MARK: - Settings
+
+    /// The settings as the user has them (or the defaults if they haven't changed anything).
+    public var userSettings: SchedulerSettings { state.userSettings ?? SchedulerSettings(from: settings) }
+
+    /// Saves the user's settings and starts using them.
+    public func updateUserSettings(_ new: SchedulerSettings) {
+        var applied = settings
+        new.apply(to: &applied)
+        settings = applied
+        state.userSettings = SchedulerSettings(from: applied)
+        persist()
     }
 
     // MARK: - Requests

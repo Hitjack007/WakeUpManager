@@ -639,3 +639,47 @@ struct SafetyWakeTests {
         #expect(next.map { $0 <= t("07:02") } == true)
     }
 }
+
+@Suite("User settings")
+struct UserSettingsTests {
+    @Test func updatingSettingsChangesHowTheEngineBehavesAndIsSaved() throws {
+        let world = FakeWorld()
+        let engine = EngineFixtures.makeEngine(world: world)
+        var new = engine.userSettings
+        new.leadMinutes = 15
+        new.batteryFloorPercent = 40
+        engine.updateUserSettings(new)
+
+        #expect(engine.settings.leadMinutes == 15)
+        #expect(engine.settings.battery.floorPercent == 40)
+        EngineFixtures.scheduled(EngineFixtures.request(), engine: engine)
+        #expect(world.bookedWakes.contains(t("06:45")))
+        #expect(world.store.saved?.userSettings?.leadMinutes == 15)
+    }
+
+    @Test func aRestartedEngineKeepsTheUsersSettings() throws {
+        let world = FakeWorld()
+        let engine = EngineFixtures.makeEngine(world: world)
+        var new = engine.userSettings
+        new.missedGraceMinutes = 12
+        engine.updateUserSettings(new)
+
+        let revived = EngineFixtures.makeEngine(world: FakeWorld(), state: try #require(world.store.saved))
+        #expect(revived.settings.missedGraceSeconds == 12 * 60)
+    }
+
+    @Test func outOfRangeValuesAreClamped() {
+        let engine = EngineFixtures.makeEngine(world: FakeWorld())
+        var wild = engine.userSettings
+        wild.leadMinutes = 100_000
+        wild.batteryFloorPercent = -5
+        engine.updateUserSettings(wild)
+        #expect(engine.settings.leadMinutes == 120)
+        #expect(engine.settings.battery.floorPercent == 0)
+    }
+
+    @Test func stateSavedBeforeSettingsExistedStillLoads() throws {
+        let state = try JSONDecoder().decode(EngineState.self, from: Data("{}".utf8))
+        #expect(state.userSettings == nil)
+    }
+}

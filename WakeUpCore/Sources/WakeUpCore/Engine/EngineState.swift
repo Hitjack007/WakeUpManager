@@ -229,11 +229,13 @@ public struct EngineState: Codable, Equatable, Sendable {
     public var allowedWakeOwners: Set<String> = []
     /// The rolling safety wake booked while a job runs, if one is booked.
     public var safetyWake: Date?
+    /// What the user has set in the app. `nil` until they change something.
+    public var userSettings: SchedulerSettings?
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case clients, jobs, executions, history, notices, responses, bookedWakes, blockedWakes, allowedWakeOwners, safetyWake
+        case clients, jobs, executions, history, notices, responses, bookedWakes, blockedWakes, allowedWakeOwners, safetyWake, userSettings
     }
 
     /// Fields added after the first version are optional on disk, so older state files still load.
@@ -249,6 +251,44 @@ public struct EngineState: Codable, Equatable, Sendable {
         blockedWakes = try c.decodeIfPresent([BlockedWake].self, forKey: .blockedWakes) ?? []
         allowedWakeOwners = try c.decodeIfPresent(Set<String>.self, forKey: .allowedWakeOwners) ?? []
         safetyWake = try c.decodeIfPresent(Date.self, forKey: .safetyWake)
+        userSettings = try c.decodeIfPresent(SchedulerSettings.self, forKey: .userSettings)
+    }
+}
+
+/// The settings the user can change in the app. They are saved with the state, so they survive a restart.
+public struct SchedulerSettings: Codable, Equatable, Sendable {
+    public var batteryFloorPercent: Int
+    public var mediumAbovePercent: Int
+    public var highAbovePercent: Int
+    public var leadMinutes: Int
+    public var missedGraceMinutes: Int
+
+    public init(
+        batteryFloorPercent: Int, mediumAbovePercent: Int, highAbovePercent: Int,
+        leadMinutes: Int, missedGraceMinutes: Int
+    ) {
+        self.batteryFloorPercent = batteryFloorPercent
+        self.mediumAbovePercent = mediumAbovePercent
+        self.highAbovePercent = highAbovePercent
+        self.leadMinutes = leadMinutes
+        self.missedGraceMinutes = missedGraceMinutes
+    }
+
+    public init(from settings: EngineSettings = EngineSettings()) {
+        batteryFloorPercent = settings.battery.floorPercent
+        mediumAbovePercent = settings.battery.mediumAbovePercent
+        highAbovePercent = settings.battery.highAbovePercent
+        leadMinutes = settings.leadMinutes
+        missedGraceMinutes = Int(settings.missedGraceSeconds / 60)
+    }
+
+    /// Puts these values into `settings`, leaving everything else as it was. Out-of-range values are clamped.
+    public func apply(to settings: inout EngineSettings) {
+        settings.battery.floorPercent = min(max(batteryFloorPercent, 0), 100)
+        settings.battery.mediumAbovePercent = min(max(mediumAbovePercent, 0), 100)
+        settings.battery.highAbovePercent = min(max(highAbovePercent, 0), 100)
+        settings.leadMinutes = min(max(leadMinutes, 0), 120)
+        settings.missedGraceSeconds = TimeInterval(min(max(missedGraceMinutes, 0), 120) * 60)
     }
 }
 

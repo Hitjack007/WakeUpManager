@@ -19,7 +19,13 @@ final class ClaudeGuardModel {
 
     private let installer: ClaudeGuardInstaller
 
-    init(installer: ClaudeGuardInstaller = ClaudeGuardInstaller()) {
+    /// The `wakeup` tool inside this app, named in the agent guide. Nil if this build doesn't contain it.
+    static var bundledCLIPath: String? {
+        let path = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/wakeup").path
+        return FileManager.default.isExecutableFile(atPath: path) ? path : nil
+    }
+
+    init(installer: ClaudeGuardInstaller = ClaudeGuardInstaller(cliPath: ClaudeGuardModel.bundledCLIPath)) {
         self.installer = installer
         status = installer.status()
         developerModeUntil = installer.developerModeExpiry()

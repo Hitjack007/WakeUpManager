@@ -478,7 +478,7 @@ The agent, the socket and the `wakeup` tool are built and were run together on t
 
 Real run: a request from a project folder was held for approval, approved, planned, the Mac was held awake, the job started at its time, the job's own `wakeup done` reached the agent over the socket, and the hold was released. One bug found: the tool reported the folder as `/private/tmp/...` while the approval named `/tmp/...`, so the approval silently matched nothing. Fixed by canonicalising every client path the agent stores or compares, with tests.
 
-Not built yet: the root helper that replaces `sudo pmset`, embedding the agent, helper and CLI in the app bundle, wiring the app's screens to the real scheduler (they still show sample data), and measuring actual CPU and GPU.
+Not built yet: measuring actual CPU and GPU (so the trend suggestion and the run table's usage columns stay empty), parallel or sequential running of overlapping jobs by intensity, and testing the FileVault and reboot behaviour. The root helper, the bundle packaging and the app's live screens are built (see "Packaging and the root helper" and "The app's screens").
 
 ## What the app does itself, as built
 
@@ -494,7 +494,41 @@ The app is now **not sandboxed** (the project setting was on; it is off, as deci
   - **Developer mode** is a file holding an expiry time. Only the app writes it, so an agent can't switch it on. The script reads it on every command, so it turns itself off.
   - The settings file is rewritten as sorted, indented JSON, so key order in it changes the first time.
 
-Not available yet: the two Login Items rows say "This build of the app doesn't contain it yet", because the agent, the root helper and their property lists are not in the app bundle. That needs a helper program (with the XPC link to `pmset`) and build steps to embed them.
+There is a fourth permission, **Open at login** (`SMAppService.mainApp`), so the menu bar app is running to show alerts. A Login Items row says "This build of the app doesn't contain it yet" only if the packaging step below hasn't run.
+
+## Packaging and the root helper
+
+Everything the scheduler needs ships inside the app (`Packaging/embed-helpers.sh` builds the `WakeUpCore` package in release mode and copies the results into the app bundle, signing each program with the app's identity):
+
+| Where in the app | What | Notes |
+|---|---|---|
+| `Contents/Helpers/wakeup-agent` | The scheduler agent | LaunchAgent, registered with `SMAppService.agent`. Started with `--helper --team TEAM --audit report --log-to-file`. Logs to `~/Library/Application Support/WakeUpManager/logs/agent.log`. |
+| `Contents/Helpers/wakeup-helper` | The root helper | LaunchDaemon, registered with `SMAppService.daemon`, started by launchd when something asks for its Mach service. |
+| `Contents/Helpers/wakeup` | The command line tool | The app can link it into `~/.local/bin/wakeup` (Settings > Command line). |
+| `Contents/Library/LaunchAgents/com.wakeupmanager.agent.plist` | Agent definition | `BundleProgram`, `RunAtLoad`, `KeepAlive`. |
+| `Contents/Library/LaunchDaemons/com.wakeupmanager.helper.plist` | Helper definition | `BundleProgram`, `MachServices`. The team ID is filled in at build time. |
+
+- **What the helper does:** it books and cancels wakes with `pmset schedule`, as root, for the agent. It refuses anything owned by `com.apple.`, any event kind except wakes, owners that are empty, long, start with `-` or contain control characters, times in the past and times more than 400 days ahead. It won't start without `--team`, and it only accepts connections from programs signed by that team with the app's or the agent's identifier (checked with a code signing requirement on the XPC connection). The agent in turn only talks to a helper signed by the same team with the helper's identifier.
+- **Who may control the scheduler:** the agent trusts control messages (approve, deny, stop, extend, settings, ...) only from the app's own program, `Contents/MacOS`, not from the whole app. The `wakeup` tool is inside the app too and anyone can run it, so trusting the whole app would let any script approve itself. This was found and fixed while testing the packaged agent.
+- **Settings from the app:** the battery limits, the wake lead time and the late-job grace period are saved by the agent (in its state file) and survive a restart. The app's Settings sends them over the socket (`updateSettings`).
+
+## The app's screens
+
+The screens now show what the agent reports (`SchedulerStore`, filled by polling `status` every 2 seconds in `SchedulerLink.swift`), and each decision the user makes is sent to the agent. With no agent running the app says so, instead of showing sample data. Previews still use sample data.
+
+- **Clients, queue, alerts, blocked wakes:** from the agent. Approve, Deny, Revoke, Extend, Stop, Dismiss, Allow this app, and the per-job battery settings all act on the real scheduler. An overlap has its own alert with Run both and Drop the new job.
+- **Wake log:** read from `pmset -g log` (`WakeLogParser`, 6 tests). A timer wake within 90 seconds of a wake the scheduler booked is marked as the scheduler's; other timer wakes are Apple's or another program's; Wi-Fi, Bluetooth and network wakes are marked as network; keyboard, mouse and lid wakes as the user's.
+- **Notifications:** each notice that appears while the app is running is shown as a macOS notification (once allowed). Notices that were already open when the app started are not announced again.
+- **Not real yet:** the CPU and GPU usage columns and the trend suggestion (nothing measures them), and the FileVault warning that the sample data had.
+
+## Building and running it
+
+Done by the build, once the "Embed scheduler programs" Run Script phase is added to the app target (see below):
+
+1. Build and run the app from Xcode. The first build compiles the package in release mode, which takes a minute.
+2. Settings > Permissions > Go through them. Allow Notifications, then Open at login, Background scheduler and Wake helper. For the last three, macOS opens System Settings > General > Login Items: switch each on.
+3. Settings > Command line > Install, so scripts can run `wakeup`. Settings > Claude Code > Install, to add the guard.
+4. The first time something asks for a wake, the app shows an alert: approve the client.
 
 ## Wakes booked by other software (audit), as built
 
@@ -523,5 +557,5 @@ Tests cover the parser, the owner classification, the engine's record, state fil
 - **Caffeinate:** How it fits in (keeping the Mac awake while a job runs?).
 - **Privileges / packaging:** Proposed: app + embedded user agent + embedded root helper, registered with `SMAppService`. Awaiting confirmation.
 - **Not yet covered:** overlapping jobs (parallel or sequential, based on intensity), scheduler restart reconciliation, and the FileVault and reboot behaviour.
-- **Code:** `WakeUpCore/` is a Swift package with 187 Swift Testing tests, all passing, and the whole chain proven on this Mac (see "Working end to end"). It has these parts: `WakeUpCore` (the schema types, the schedule and daylight-saving resolver, intensity levels, the battery and missed-job policy, the scheduler engine, the socket messages and client checks); `WakeUpSystem` (the job launcher, battery reader, power assertions, an interim `pmset` wake booker, the socket server and the scheduler agent); `WakeUpCLI` (the `wakeup` command); and two executables, `wakeup` and `wakeup-agent`. The package is linked into the Xcode project.
+- **Code:** `WakeUpCore/` is a Swift package with 204 Swift Testing tests, all passing, and the whole chain proven on this Mac (see "Working end to end"). It has these parts: `WakeUpCore` (the schema types, the schedule and daylight-saving resolver, intensity levels, the battery and missed-job policy, the scheduler engine, the socket messages and client checks); `WakeUpSystem` (the job launcher, battery reader, power assertions, an interim `pmset` wake booker, the socket server and the scheduler agent); `WakeUpCLI` (the `wakeup` command); and two executables, `wakeup` and `wakeup-agent`. The package is linked into the Xcode project.
 - **Spike:** Done for the iMac (see "Spike results"). Battery gates, lid-closed behaviour and the Mac Studio still need testing, and need a MacBook for the first two.

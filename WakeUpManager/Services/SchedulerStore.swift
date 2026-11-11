@@ -1,15 +1,17 @@
 //
-//  MockStore.swift
+//  SchedulerStore.swift
 //  WakeUpManager
 //
-//  UI mockup only: dummy data plus just enough behaviour (approve, extend, stop, dismiss) to make the
-//  screens feel real.
+//  What the screens show. In the running app it is filled from the scheduler agent (see SchedulerLink.swift)
+//  and every decision the user makes is sent back to the agent. With `sampleData: true` (previews) it holds
+//  dummy data and just enough behaviour to make the screens feel real.
 //
 
 import SwiftUI
+import WakeUpCore
 
 @Observable
-final class MockStore {
+final class SchedulerStore {
     // MARK: Data
 
     var clients: [MockClient] {
@@ -23,11 +25,33 @@ final class MockStore {
         didSet { refreshAlertGroups() }
     }
     var blockedWakes: [BlockedWake]
-    let wakeLog: [WakeLogEntry]
+    var wakeLog: [WakeLogEntry] {
+        didSet { importantWakeLog = wakeLog.filter { $0.source == .scheduler || $0.source == .user } }
+    }
     /// The wake log without Apple maintenance and network wakes, prepared once.
-    let importantWakeLog: [WakeLogEntry]
+    private(set) var importantWakeLog: [WakeLogEntry] = []
     var trend: TrendSuggestion?
-    let health: [HealthItem]
+    var health: [HealthItem]
+
+    // MARK: Live connection (nil while the screens show dummy data)
+
+    /// The scheduler agent, when the app is showing the real thing.
+    var link: SchedulerLink?
+    /// Whether the last attempt to reach the agent worked.
+    var agentReachable = false
+    /// Why the agent refused or couldn't do the last thing the app asked, if it didn't work.
+    var lastActionError: String?
+    /// The execution behind each alert, so Extend and Stop know what they act on.
+    var alertExecutions: [String: UUID] = [:]
+    /// The job behind each alert, for overlap decisions.
+    var alertJobKeys: [String: String] = [:]
+    /// Owners the user has allowed to book their own wakes.
+    var allowedWakeOwners: Set<String> = []
+    /// When the scheduler has booked wakes, so the wake log can tell its wakes from other ones.
+    var knownWakeTimes: [Date] = []
+    var powerDescription = "Plugged in"
+    var powerDetail = "No battery (iMac)"
+    var holdingAwake = false
 
     // MARK: Cached groups (recomputed when their inputs change, not on every body evaluation)
 
@@ -42,29 +66,45 @@ final class MockStore {
 
     // MARK: Settings
 
-    var batteryFloor = 30
-    var mediumAbove = 80
-    var highAbove = 60
-    var missedGraceMinutes = 5
-    var defaultLeadMinutes = 5
+    var batteryFloor = 30 { didSet { settingsChanged() } }
+    var mediumAbove = 80 { didSet { settingsChanged() } }
+    var highAbove = 60 { didSet { settingsChanged() } }
+    var missedGraceMinutes = 5 { didSet { settingsChanged() } }
+    var defaultLeadMinutes = 5 { didSet { settingsChanged() } }
+    /// True while the settings are being filled in from the agent, so that doesn't send them straight back.
+    var applyingReport = false
+
+    /// The settings as one value, for the agent.
+    var schedulerSettings: SchedulerSettings {
+        SchedulerSettings(
+            batteryFloorPercent: batteryFloor, mediumAbovePercent: mediumAbove, highAbovePercent: highAbove,
+            leadMinutes: defaultLeadMinutes, missedGraceMinutes: missedGraceMinutes)
+    }
+
+    private func settingsChanged() {
+        guard !applyingReport else { return }
+        send(.updateSettings(schedulerSettings))
+    }
 
     // MARK: Status
 
-    let powerDescription = "Plugged in"
-    let powerDetail = "No battery (iMac)"
     var blockedThisWeek: Int { blockedWakes.count }
 
-    init() {
-        clients = MockStore.sampleClients
-        jobs = MockStore.sampleJobs
-        runs = MockStore.sampleRuns
-        alerts = MockStore.sampleAlerts
-        blockedWakes = MockStore.sampleBlockedWakes
-        wakeLog = MockStore.sampleWakeLog
-        importantWakeLog = MockStore.sampleWakeLog.filter { $0.source == .scheduler || $0.source == .user }
-        health = MockStore.sampleHealth
-        trend = TrendSuggestion(
-            jobID: "nhl-game-recording", jobName: "NHL game recording", runs: 3, observedCpu: 56, expectedCpu: 45)
+    /// - Parameter sampleData: `true` fills the screens with dummy data (previews). The running app passes
+    ///   `false` and fills them from the scheduler agent instead.
+    init(sampleData: Bool = true) {
+        clients = sampleData ? SchedulerStore.sampleClients : []
+        jobs = sampleData ? SchedulerStore.sampleJobs : []
+        runs = sampleData ? SchedulerStore.sampleRuns : []
+        alerts = sampleData ? SchedulerStore.sampleAlerts : []
+        blockedWakes = sampleData ? SchedulerStore.sampleBlockedWakes : []
+        let log = sampleData ? SchedulerStore.sampleWakeLog : []
+        wakeLog = log
+        importantWakeLog = log.filter { $0.source == .scheduler || $0.source == .user }
+        health = sampleData ? SchedulerStore.sampleHealth : []
+        trend = sampleData
+            ? TrendSuggestion(jobID: "nhl-game-recording", jobName: "NHL game recording", runs: 3, observedCpu: 56, expectedCpu: 45)
+            : nil
         refreshClientGroups()
         refreshJobGroups()
         refreshAlertGroups()
@@ -90,6 +130,7 @@ final class MockStore {
         set {
             guard let index = jobs.firstIndex(where: { $0.id == id }) else { return }
             jobs[index].minimumBattery = newValue
+            sendJobSettings(index: index)
         }
     }
 
@@ -98,12 +139,24 @@ final class MockStore {
         set {
             guard let index = jobs.firstIndex(where: { $0.id == id }) else { return }
             jobs[index].allowHighOnBattery = newValue
+            sendJobSettings(index: index)
         }
+    }
+
+    /// Tells the agent a job's power settings changed. The job's id is its key in the scheduler.
+    private func sendJobSettings(index: Int) {
+        let job = jobs[index]
+        send(.setJobSettings(
+            jobKey: job.id,
+            settings: JobPowerSettings(
+                minimumBatteryPercent: job.minimumBattery == batteryFloor ? nil : job.minimumBattery,
+                allowHighOnBattery: job.allowHighOnBattery)))
     }
 
     // MARK: Actions
 
     func approve(clientID: String) {
+        if send(.approveClient(path: clientID)) { return }
         setStatus(.approved, forClient: clientID)
         for index in jobs.indices where jobs[index].state == .awaitingApproval && jobs[index].clientName == clientName(for: clientID) {
             jobs[index].state = .scheduled
@@ -112,15 +165,21 @@ final class MockStore {
     }
 
     func deny(clientID: String) {
+        if send(.denyClient(path: clientID)) { return }
         setStatus(.denied, forClient: clientID)
         resolveAlerts(ofKind: .approval)
     }
 
     func revoke(clientID: String) {
+        if send(.revokeClient(path: clientID)) { return }
         setStatus(.denied, forClient: clientID)
     }
 
     func extendOverrun(alertID: String, minutes: Int) {
+        if let executionId = alertExecutions[alertID], send(.extend(executionId: executionId, minutes: minutes)) {
+            resolve(alertID: alertID)
+            return
+        }
         resolve(alertID: alertID)
         guard let index = jobs.firstIndex(where: { $0.state == .overrunning }) else { return }
         jobs[index].estimatedMinutes += minutes
@@ -128,6 +187,10 @@ final class MockStore {
     }
 
     func stopOverrun(alertID: String) {
+        if let executionId = alertExecutions[alertID], send(.stop(executionId: executionId)) {
+            resolve(alertID: alertID)
+            return
+        }
         resolve(alertID: alertID)
         guard let index = jobs.firstIndex(where: { $0.state == .overrunning }) else { return }
         jobs[index].state = .completed
@@ -136,10 +199,18 @@ final class MockStore {
     func resolve(alertID: String) {
         guard let index = alerts.firstIndex(where: { $0.id == alertID }) else { return }
         alerts[index].resolved = true
+        if let id = UUID(uuidString: alertID) { send(.resolveNotice(id: id)) }
+    }
+
+    /// Answers an overlap: run both jobs at once, or drop the new one.
+    func resolveOverlap(alertID: String, allowBoth: Bool) {
+        guard let jobKey = alertJobKeys[alertID] else { return }
+        send(.resolveConflict(jobKey: jobKey, allowBoth: allowBoth))
     }
 
     func allowBlockedWake(id: String) {
         guard let index = blockedWakes.firstIndex(where: { $0.id == id }) else { return }
+        if send(.allowWakeOwner(blockedWakes[index].owner)) { return }
         blockedWakes[index].status = .allowed
         resolveAlerts(ofKind: .blockedWake)
     }
@@ -207,7 +278,7 @@ final class MockStore {
 
 // MARK: - Dummy data
 
-extension MockStore {
+extension SchedulerStore {
     static let sampleClients: [MockClient] = [
         MockClient(
             id: "/Users/mark/nhl-games-on-server/nhl-recorder", displayName: "NHL Recorder",

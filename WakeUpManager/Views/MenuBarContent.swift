@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct MenuBarContent: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         if let job = store.nextWakeJob, let wake = job.plannedWake {

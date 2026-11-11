@@ -141,7 +141,7 @@ struct MockRun: Identifiable, Equatable {
 }
 
 struct MockAlert: Identifiable, Equatable {
-    enum Kind: Equatable { case overrun, blockedWake, missed, approval }
+    enum Kind: Equatable { case overrun, blockedWake, missed, approval, overlap }
 
     let id: String
     var kind: Kind

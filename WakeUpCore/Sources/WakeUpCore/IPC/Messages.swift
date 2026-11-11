@@ -21,6 +21,7 @@ public struct ClientMessage: Codable, Equatable, Sendable {
         case resolveNotice
         case setJobSettings
         case allowWakeOwner
+        case updateSettings
     }
 
     public var kind: Kind
@@ -37,6 +38,8 @@ public struct ClientMessage: Codable, Equatable, Sendable {
     public var jobSettings: JobPowerSettings?
     /// The owner tag, for `allowWakeOwner`.
     public var owner: String?
+    /// The settings, for `updateSettings`.
+    public var userSettings: SchedulerSettings?
 
     public init(
         kind: Kind,
@@ -50,8 +53,10 @@ public struct ClientMessage: Codable, Equatable, Sendable {
         minutes: Int? = nil,
         allowBoth: Bool? = nil,
         jobSettings: JobPowerSettings? = nil,
-        owner: String? = nil
+        owner: String? = nil,
+        userSettings: SchedulerSettings? = nil
     ) {
+        self.userSettings = userSettings
         self.kind = kind
         self.request = request
         self.report = report
@@ -70,7 +75,7 @@ public struct ClientMessage: Codable, Equatable, Sendable {
         switch kind {
         case .ping, .submit, .complete, .cancelJob, .status: false
         case .approveClient, .denyClient, .revokeClient, .extend, .stop, .resolveConflict, .resolveNotice,
-             .setJobSettings, .allowWakeOwner: true
+             .setJobSettings, .allowWakeOwner, .updateSettings: true
         }
     }
 
@@ -108,6 +113,10 @@ public struct ClientMessage: Codable, Equatable, Sendable {
     public static func allowWakeOwner(_ owner: String) -> ClientMessage {
         ClientMessage(kind: .allowWakeOwner, owner: owner)
     }
+
+    public static func updateSettings(_ settings: SchedulerSettings) -> ClientMessage {
+        ClientMessage(kind: .updateSettings, userSettings: settings)
+    }
 }
 
 /// A snapshot of the scheduler for the `status` message and the app's screens.
@@ -119,12 +128,19 @@ public struct StatusReport: Codable, Equatable, Sendable {
     public var openNotices: [Notice]
     public var blockedWakes: [BlockedWake]
     public var allowedWakeOwners: [String]
+    /// Every job the scheduler knows, with its request and its power settings.
+    public var jobs: [JobEntry]
+    /// What the user has set in the app.
+    public var userSettings: SchedulerSettings
 
     public init(
         holdingAwake: Bool, clients: [ClientRecord], executions: [Execution],
         recentHistory: [Execution], openNotices: [Notice],
-        blockedWakes: [BlockedWake] = [], allowedWakeOwners: [String] = []
+        blockedWakes: [BlockedWake] = [], allowedWakeOwners: [String] = [], jobs: [JobEntry] = [],
+        userSettings: SchedulerSettings = SchedulerSettings()
     ) {
+        self.jobs = jobs
+        self.userSettings = userSettings
         self.holdingAwake = holdingAwake
         self.clients = clients
         self.executions = executions

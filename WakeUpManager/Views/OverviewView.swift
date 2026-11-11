@@ -23,7 +23,7 @@ struct OverviewView: View {
 // MARK: - Next wake
 
 struct NextWakeCard: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         Card(title: "Next wake") {
@@ -87,7 +87,7 @@ struct StatusTile: View {
 }
 
 struct PowerTile: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         StatusTile(
@@ -97,7 +97,7 @@ struct PowerTile: View {
 }
 
 struct HoldTile: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         if let job = store.runningJob {
@@ -113,7 +113,7 @@ struct HoldTile: View {
 }
 
 struct BlockingTile: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         StatusTile(
@@ -126,7 +126,7 @@ struct BlockingTile: View {
 // MARK: - Alerts needing attention
 
 struct AttentionSection: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         if !store.openAlerts.isEmpty {
@@ -143,7 +143,7 @@ struct AttentionSection: View {
 // MARK: - Upcoming
 
 struct UpcomingSection: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         Card(title: "Coming up") {
@@ -187,6 +187,6 @@ struct UpcomingRow: View {
 
 #Preview {
     OverviewView()
-        .environment(MockStore())
+        .environment(SchedulerStore())
         .frame(width: 800, height: 700)
 }

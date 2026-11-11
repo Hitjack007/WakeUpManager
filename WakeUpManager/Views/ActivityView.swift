@@ -47,7 +47,7 @@ struct ActivityView: View {
 // MARK: - Runs
 
 struct RunsTab: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         VStack(spacing: 0) {
@@ -127,7 +127,7 @@ struct UsageText: View {
 /// Shown when measured use has been above the expected figure for several runs in a row. The scheduler
 /// only suggests a change; it never changes a job's numbers on its own.
 struct TrendBanner: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         if let trend = store.trend {
@@ -157,7 +157,7 @@ struct TrendBanner: View {
 // MARK: - Blocked wakes
 
 struct BlockedWakesTab: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         ScrollView {
@@ -182,7 +182,7 @@ struct BlockedWakesTab: View {
 }
 
 struct BlockedWakeRow: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
     let wake: BlockedWake
 
     var body: some View {
@@ -222,7 +222,7 @@ enum WakeLogFilter: String, CaseIterable, Identifiable {
 }
 
 struct WakeLogTab: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
     @State private var filter: WakeLogFilter = .important
 
     var body: some View {
@@ -353,18 +353,18 @@ extension WakeLogEntry {
 
 #Preview {
     ActivityView()
-        .environment(MockStore())
+        .environment(SchedulerStore())
         .frame(width: 900, height: 600)
 }
 
 #Preview("Blocked wakes") {
     BlockedWakesTab()
-        .environment(MockStore())
+        .environment(SchedulerStore())
         .frame(width: 900, height: 400)
 }
 
 #Preview("Wake log") {
     WakeLogTab()
-        .environment(MockStore())
+        .environment(SchedulerStore())
         .frame(width: 900, height: 400)
 }

@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct QueueView: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
     @State private var selectedID: String? = "nhl-game-recording"
 
     var body: some View {
@@ -54,7 +54,7 @@ struct QueueView: View {
 // MARK: - Inspector
 
 struct JobInspector: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
     let jobID: String?
 
     var body: some View {
@@ -132,7 +132,7 @@ struct InspectorLaunch: View {
 }
 
 struct InspectorResources: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
     let jobName: String
     let expectedCpu: Int
     let expectedGpu: Int
@@ -174,7 +174,7 @@ struct ResourceRow: View {
 }
 
 struct InspectorPower: View {
-    @Bindable var store: MockStore
+    @Bindable var store: SchedulerStore
     let jobID: String
     let intensity: Intensity
 
@@ -200,6 +200,6 @@ struct InspectorPower: View {
 
 #Preview {
     QueueView()
-        .environment(MockStore())
+        .environment(SchedulerStore())
         .frame(width: 1000, height: 600)
 }

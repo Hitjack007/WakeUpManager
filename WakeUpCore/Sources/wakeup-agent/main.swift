@@ -38,13 +38,16 @@ Usage: wakeup-agent [--socket PATH] [--state PATH] [--logs DIR] [--trust PATH]..
 [--helper --team TEAMID] [--log-to-file]
 """
 
-/// When the agent runs from inside the app (`Foo.app/Contents/Helpers/wakeup-agent`), that app is trusted
-/// to send control messages without being told where it is.
-func enclosingAppPath(ofExecutable path: String) -> String? {
+/// When the agent runs from inside the app (`Foo.app/Contents/Helpers/wakeup-agent`), the app's own program
+/// (`Foo.app/Contents/MacOS`) is trusted to send control messages without being told where it is.
+///
+/// Only that folder, not the whole app: the `wakeup` tool is inside the app too, and anyone can run it,
+/// so trusting the whole app would let any script approve itself.
+func trustedControlPath(forAgentExecutable path: String) -> String? {
     let url = URL(fileURLWithPath: path).resolvingSymlinksInPath()
     var parts = url.pathComponents
     guard let index = parts.lastIndex(where: { $0.hasSuffix(".app") }) else { return nil }
-    parts = Array(parts[...index])
+    parts = Array(parts[...index]) + ["Contents", "MacOS"]
     return NSString.path(withComponents: parts)
 }
 
@@ -128,8 +131,9 @@ func runAgent() -> Int32 {
         FileHandle.standardError.write(Data("--helper needs --team, so the agent only talks to the real helper.\n".utf8))
         return 64
     }
-    if options.trusted.isEmpty, let executable = Bundle.main.executablePath, let app = enclosingAppPath(ofExecutable: executable) {
-        options.trusted = [app]
+    if options.trusted.isEmpty, let executable = Bundle.main.executablePath,
+       let appProgram = trustedControlPath(forAgentExecutable: executable) {
+        options.trusted = [appProgram]
     }
     if options.logToFile {
         try? FileManager.default.createDirectory(atPath: options.logsPath, withIntermediateDirectories: true)

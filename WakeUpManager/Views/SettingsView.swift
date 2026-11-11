@@ -7,7 +7,7 @@ import SwiftUI
 import WakeUpSystem
 
 struct SettingsView: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         TabView {
@@ -16,6 +16,7 @@ struct SettingsView: View {
                     BatterySection(store: store)
                     IntensitySection()
                     TimingSection(store: store)
+                    CommandLineToolSection()
                     ClaudeGuardSection()
                     HealthSection()
                 }
@@ -32,7 +33,7 @@ struct SettingsView: View {
 // MARK: - Battery
 
 struct BatterySection: View {
-    @Bindable var store: MockStore
+    @Bindable var store: SchedulerStore
 
     var body: some View {
         Section {
@@ -66,7 +67,7 @@ struct IntensitySection: View {
 // MARK: - Timing
 
 struct TimingSection: View {
-    @Bindable var store: MockStore
+    @Bindable var store: SchedulerStore
 
     var body: some View {
         Section {
@@ -76,6 +77,42 @@ struct TimingSection: View {
             Text("Timing")
         } footer: {
             Text("A job that is later than this is skipped and you are alerted.")
+        }
+    }
+}
+
+// MARK: - Command line tool
+
+struct CommandLineToolSection: View {
+    @Environment(CommandLineToolModel.self) private var tool
+
+    var body: some View {
+        Section {
+            LabeledContent("wakeup command") {
+                switch tool.status {
+                case .installed: Button("Remove") { tool.remove() }
+                case .notInstalled, .pointsElsewhere: Button("Install") { tool.install() }
+                case .unavailable: Text("Not in this build").foregroundStyle(.secondary)
+                }
+            }
+            Text(statusText).font(.caption).foregroundStyle(.secondary)
+            if let message = tool.errorMessage {
+                Label(message, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange)
+            }
+        } header: {
+            Text("Command line")
+        } footer: {
+            Text("Scripts and agents use this to ask the scheduler for wakes. Make sure ~/.local/bin is on your PATH.")
+        }
+        .task { tool.refresh() }
+    }
+
+    private var statusText: LocalizedStringKey {
+        switch tool.status {
+        case .installed: "Installed as \(tool.linkPath)."
+        case .notInstalled: "Not installed. Adds a link at \(tool.linkPath) to the copy inside this app."
+        case .pointsElsewhere(let path): "\(tool.linkPath) already exists and points to \(path). Installing replaces a link, never a real file."
+        case .unavailable: "This build of the app doesn't contain the command yet."
         }
     }
 }
@@ -155,7 +192,7 @@ struct ClaudeGuardSection: View {
 // MARK: - Health
 
 struct HealthSection: View {
-    @Environment(MockStore.self) private var store
+    @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         Section("System health") {
@@ -200,8 +237,9 @@ struct HealthRow: View {
 
 #Preview {
     SettingsView()
-        .environment(MockStore())
+        .environment(SchedulerStore())
         .environment(PermissionsModel())
         .environment(ClaudeGuardModel())
+        .environment(CommandLineToolModel())
         .frame(width: 700, height: 900)
 }
