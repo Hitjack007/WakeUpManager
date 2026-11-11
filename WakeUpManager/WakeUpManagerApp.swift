@@ -5,6 +5,7 @@
 //  Created by Mark Greene on 11/11/2026.
 //
 
+import OSLog
 import SwiftUI
 
 /// Whether the app shows a menu bar icon and a Dock icon. The scheduler itself runs in the background agent,
@@ -17,13 +18,23 @@ enum AppAppearance {
     ///   deactivate the app and hide its windows, so the app brings itself back to the front.
     static func apply(keepWindowsInFront: Bool = false) {
         let showDock = UserDefaults.standard.object(forKey: dockKey) as? Bool ?? true
-        NSApp.setActivationPolicy(showDock ? .regular : .accessory)
+        let policy: NSApplication.ActivationPolicy = showDock ? .regular : .accessory
+        if !NSApp.setActivationPolicy(policy) {
+            Logger(subsystem: "com.Hitjack007.WakeUpManager", category: "appearance")
+                .error("macOS refused to change the activation policy to \(showDock ? "regular" : "accessory")")
+        }
         guard keepWindowsInFront else { return }
-        // Wait for the policy change to settle, then reactivate.
-        DispatchQueue.main.async {
-            NSApp.activate()
-            for window in NSApp.windows where window.canBecomeMain && !window.isMiniaturized {
-                window.makeKeyAndOrderFront(nil)
+        // The Dock icon only appears (or goes) once the change has settled and the app is activated again,
+        // so activate on the next turns of the run loop rather than straight away.
+        for delay in [0.05, 0.3] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                if showDock { _ = NSApp.setActivationPolicy(.regular) }
+                NSRunningApplication.current.activate(options: [.activateAllWindows])
+                NSApp.activate()
+                for window in NSApp.windows where window.canBecomeMain && !window.isMiniaturized {
+                    window.orderFrontRegardless()
+                    window.makeKeyAndOrderFront(nil)
+                }
             }
         }
     }
