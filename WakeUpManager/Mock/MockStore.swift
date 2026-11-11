@@ -327,12 +327,17 @@ extension MockStore {
     ]
 
     static let sampleWakeLog: [WakeLogEntry] = [
-        WakeLogEntry(id: "log-1", time: .mock(hour: 13, minute: 52), kind: "Wake", reason: "Scheduled by WakeUpManager (NHL daily planner test)", source: .scheduler),
+        WakeLogEntry(id: "log-1", time: .mock(hour: 13, minute: 52), kind: "Wake", reason: "Booked for the wake test", source: .scheduler),
         WakeLogEntry(id: "log-2", time: .mock(hour: 13, minute: 48), kind: "DarkWake", reason: "Network: Wi-Fi and Bluetooth traffic", source: .network),
         WakeLogEntry(id: "log-3", time: .mock(hour: 7, minute: 30), kind: "Wake", reason: "Keyboard or mouse", source: .user),
         WakeLogEntry(id: "log-4", time: .mock(hour: 7, minute: 18), kind: "DarkWake", reason: "Apple: maintenance (mDNSResponder)", source: .apple),
-        WakeLogEntry(id: "log-5", time: .mock(hour: 1, minute: 0), kind: "Wake", reason: "Scheduled by WakeUpManager (NHL daily planner)", source: .scheduler),
+        WakeLogEntry(id: "log-5", time: .mock(hour: 1, minute: 0), kind: "Wake", reason: "Booked for the NHL daily planner", source: .scheduler),
         WakeLogEntry(id: "log-6", time: .mock(day: -1, hour: 22, minute: 44), kind: "DarkWake", reason: "Apple: calendar refresh (calaccessd)", source: .apple),
+        WakeLogEntry(id: "log-7", time: .mock(day: -1, hour: 16, minute: 59), kind: "Wake", reason: "Booked for the ClaudeWriter book chunk run", source: .scheduler),
+        WakeLogEntry(id: "log-8", time: .mock(day: -1, hour: 11, minute: 30), kind: "Wake", reason: "Booked for the NHL game recording", source: .scheduler),
+        WakeLogEntry(id: "log-9", time: .mock(day: -1, hour: 11, minute: 12), kind: "DarkWake", reason: "Network: Wi-Fi and Bluetooth traffic", source: .network),
+        WakeLogEntry(id: "log-10", time: .mock(day: -1, hour: 8, minute: 2), kind: "Wake", reason: "Keyboard or mouse", source: .user),
+        WakeLogEntry(id: "log-11", time: .mock(day: -1, hour: 1, minute: 0), kind: "Wake", reason: "Booked for the NHL daily planner", source: .scheduler),
     ]
 
     static let sampleHealth: [HealthItem] = [

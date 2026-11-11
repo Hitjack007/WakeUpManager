@@ -208,42 +208,147 @@ struct BlockedWakeRow: View {
 
 // MARK: - Wake log
 
-struct WakeLogTab: View {
-    @Environment(MockStore.self) private var store
-    @State private var showAppleAndNetwork = false
+enum WakeLogFilter: String, CaseIterable, Identifiable {
+    case important, all
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Toggle("Show Apple and network wakes", isOn: $showAppleAndNetwork)
-                Card(title: nil) {
-                    VStack(spacing: 0) {
-                        ForEach(showAppleAndNetwork ? store.wakeLog : store.importantWakeLog) { entry in
-                            WakeLogRow(entry: entry)
-                                .padding(.vertical, 8)
-                            Divider()
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
+    var id: String { rawValue }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .important: "Scheduler and you"
+        case .all: "Everything"
         }
     }
 }
 
-struct WakeLogRow: View {
-    let entry: WakeLogEntry
+struct WakeLogTab: View {
+    @Environment(MockStore.self) private var store
+    @State private var filter: WakeLogFilter = .important
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(entry.time, format: .dateTime.weekday(.abbreviated).hour().minute())
-                .monospacedDigit()
-                .frame(width: 110, alignment: .leading)
-            Pill(text: LocalizedStringKey(entry.kind), color: entry.kind == "Wake" ? .blue : .secondary)
-            Text(entry.reason).foregroundStyle(.secondary)
+        VStack(spacing: 0) {
+            WakeLogToolbar(
+                filter: $filter,
+                total: store.wakeLog.count,
+                hidden: store.wakeLog.count - store.importantWakeLog.count)
+            Table(filter == .all ? store.wakeLog : store.importantWakeLog) {
+                TableColumn("When") { entry in
+                    WakeLogTime(time: entry.time)
+                }
+                .width(min: 130, ideal: 150)
+                TableColumn("Type") { entry in
+                    Pill(text: entry.isDarkWake ? "DarkWake" : "Wake", color: entry.isDarkWake ? .secondary : .blue)
+                }
+                .width(min: 80, ideal: 90)
+                TableColumn("Caused by") { entry in
+                    WakeSourceLabel(source: entry.source)
+                }
+                .width(min: 120, ideal: 150)
+                TableColumn("Details") { entry in
+                    Text(entry.reason)
+                }
+            }
         }
     }
+}
+
+/// The filter and a summary line above the wake log.
+struct WakeLogToolbar: View {
+    @Binding var filter: WakeLogFilter
+    let total: Int
+    let hidden: Int
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Picker("Show", selection: $filter) {
+                ForEach(WakeLogFilter.allCases) { filter in
+                    Text(filter.title).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 300)
+            Spacer()
+            if filter == .important && hidden > 0 {
+                Text("^[\(hidden) wake](inflect: true) from macOS and the network hidden")
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("^[\(total) wake](inflect: true) in the last 2 days")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.callout)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+    }
+}
+
+/// "Today 1:52 PM" or "Yesterday 10:44 PM", then the weekday for anything older.
+struct WakeLogTime: View {
+    let time: Date
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(time, format: .dateTime.hour().minute())
+                .monospacedDigit()
+            Text(dayLabel)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var dayLabel: LocalizedStringKey {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(time) { return "Today" }
+        if calendar.isDateInYesterday(time) { return "Yesterday" }
+        return LocalizedStringKey(time.formatted(.dateTime.weekday(.wide)))
+    }
+}
+
+struct WakeSourceLabel: View {
+    let source: WakeLogEntry.Source
+
+    var body: some View {
+        Label {
+            Text(source.title)
+        } icon: {
+            Image(systemName: source.symbol)
+                .foregroundStyle(source.tint)
+        }
+    }
+}
+
+extension WakeLogEntry.Source {
+    var title: LocalizedStringKey {
+        switch self {
+        case .scheduler: "WakeUp Manager"
+        case .user: "You"
+        case .apple: "macOS"
+        case .network: "Network"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .scheduler: "alarm"
+        case .user: "hand.tap"
+        case .apple: "gearshape.2"
+        case .network: "wifi"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .scheduler: .blue
+        case .user: .green
+        case .apple: .secondary
+        case .network: .secondary
+        }
+    }
+}
+
+extension WakeLogEntry {
+    var isDarkWake: Bool { kind == "DarkWake" }
 }
 
 #Preview {
