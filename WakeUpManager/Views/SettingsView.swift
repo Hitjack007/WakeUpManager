@@ -87,17 +87,21 @@ struct TimingSection: View {
 
 struct AppearanceSection: View {
     @AppStorage(AppAppearance.menuBarKey) private var showMenuBarIcon = true
-    @AppStorage(AppAppearance.dockKey) private var showDockIcon = true
+    @AppStorage(AppAppearance.dockKey) private var dockMode = DockIconMode.whileWindowOpen
 
     var body: some View {
         Section {
             Toggle("Show in the menu bar", isOn: $showMenuBarIcon)
-            Toggle("Show in the Dock", isOn: $showDockIcon)
-                .onChange(of: showDockIcon) { AppAppearance.apply(keepWindowsInFront: true) }
+            Picker("Dock icon", selection: $dockMode) {
+                ForEach(DockIconMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .onChange(of: dockMode) { AppAppearance.apply(keepWindowsInFront: true) }
         } header: {
             Text("Appearance")
         } footer: {
-            if !showMenuBarIcon && !showDockIcon {
+            if !showMenuBarIcon && dockMode != .always {
                 Text("The app keeps running without an icon and still shows alerts. To open this window again, open WakeUp Manager from Finder or Spotlight.")
             } else {
                 Text("The scheduler runs in the background either way. The menu bar item shows the next wake and a quick way to check for updates.")
