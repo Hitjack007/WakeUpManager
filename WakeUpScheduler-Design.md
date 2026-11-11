@@ -437,6 +437,29 @@ Other observations:
 
 Not tested: battery or lid behaviour (an iMac has neither), a locked screen with GPU work, a reboot with FileVault, a wake that is only a DarkWake, the Mac Studio, and native IOKit calls.
 
+## Scheduler engine, as built
+
+`SchedulerEngine` (in `WakeUpCore/Sources/WakeUpCore/Engine/`) is the scheduler's brain. It never reads the clock or touches the system: every call is given `now`, and the outside world (booking wakes, holding the Mac awake, launching jobs, the battery, notifications, saving state) sits behind small protocols ("ports"). Tests use a fake world and a fake clock to run whole days in milliseconds. The real implementations come later (root helper, power assertions, process launching, IOKit battery, notifications).
+
+Where the doc was silent, the engine makes these choices. All are easy to change in `EngineSettings`, and are open to your review:
+
+| Behaviour | Choice |
+|---|---|
+| Planning ahead | The next 2 occurrences of each job are planned, and their wakes booked. |
+| Wake lead | 5 minutes before the start. |
+| Awake hold | Taken at the wake time, held through the job, and released when nothing needs it. If a hold is already on and the next job starts within 10 minutes, the hold bridges the gap instead of releasing. |
+| Startup check | An app that doesn't show up as running within 60 seconds is "did not start": the hold is released and the user is told. A newly opened app isn't judged before then. |
+| Exit without a report | For jobs that report their own completion, a process that exits without reporting gets 10 seconds for a late report, then counts as failed. |
+| Overrun | At the estimate the user is told once and the job keeps running. Extending resets the clock and can notify again. Stopping terminates it. |
+| Battery | Checked every 30 seconds while a job runs or is waiting on the power rules. A job held back by them is retried until the 5-minute grace runs out, then skipped. |
+| Missed runs | Skipped runs are collapsed into one notice per job, however many were missed while the Mac was off. |
+| Overlaps | The user is asked. If they allow both, both run at the same time. Intensity-based rules for parallel or sequential running are not built. |
+| Re-submitting a job | Replaces its plan and cancels the old wake. |
+| Completion with `reschedule` | Plans a one-off follow-up and books its wake. |
+| Revoking a client | Cancels its future runs and wakes and stops anything it has running. |
+
+Not built yet: merging nearby wakes into one, a rolling safety wake while a job runs (nightshift's trick), measuring actual CPU and GPU, and the real ports.
+
 ## Open items to decide
 
 - **Request schema:** A draft v1 is in the "Request schema" section. The open questions are listed at the end of that section.
@@ -447,5 +470,5 @@ Not tested: battery or lid behaviour (an iMac has neither), a locked screen with
 - **Caffeinate:** How it fits in (keeping the Mac awake while a job runs?).
 - **Privileges / packaging:** Proposed: app + embedded user agent + embedded root helper, registered with `SMAppService`. Awaiting confirmation.
 - **Not yet covered:** overlapping jobs (parallel or sequential, based on intensity), scheduler restart reconciliation, and the FileVault and reboot behaviour.
-- **Code:** `WakeUpCore/` is a Swift package (schema types, schedule and daylight-saving resolver, intensity levels, battery and missed-job policy) with 41 Swift Testing tests, all passing. It is not yet linked into the Xcode project.
+- **Code:** `WakeUpCore/` is a Swift package with 81 Swift Testing tests, all passing: the schema types, the schedule and daylight-saving resolver, intensity levels, the battery and missed-job policy, and the scheduler engine (see "Scheduler engine, as built"). It is not yet linked into the Xcode project.
 - **Spike:** Done for the iMac (see "Spike results"). Battery gates, lid-closed behaviour and the Mac Studio still need testing, and need a MacBook for the first two.

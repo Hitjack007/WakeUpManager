@@ -33,7 +33,7 @@ public struct BatteryPolicy: Equatable, Sendable {
 }
 
 /// Per-job settings made in the app UI.
-public struct JobPowerSettings: Equatable, Sendable {
+public struct JobPowerSettings: Codable, Equatable, Sendable {
     /// An extra battery gate for this job.
     public var minimumBatteryPercent: Int?
     /// Whether a high-intensity job may run on battery at all.
