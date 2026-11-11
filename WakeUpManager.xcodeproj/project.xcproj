@@ -41,6 +41,9 @@
         {
           "product-name": "WakeUpCore",
           "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "WakeUpSystem",
+          "build-phase": { "build-phase": "frameworks" },
         },
       ],
       "build-settings": {
@@ -50,7 +53,7 @@
         "COMBINE_HIDPI_IMAGES": "YES",
         "CURRENT_PROJECT_VERSION": "1",
         "DEVELOPMENT_TEAM": "S67T94HBGJ",
-        "ENABLE_APP_SANDBOX": "YES",
+        "ENABLE_APP_SANDBOX": "NO",
         "ENABLE_HARDENED_RUNTIME": "YES",
         "ENABLE_PREVIEWS": "YES",
         "ENABLE_USER_SELECTED_FILES": "readonly",

@@ -4,19 +4,27 @@
 //
 
 import SwiftUI
+import WakeUpSystem
 
 struct SettingsView: View {
     @Environment(MockStore.self) private var store
 
     var body: some View {
-        Form {
-            BatterySection(store: store)
-            IntensitySection()
-            TimingSection(store: store)
-            ClaudeGuardSection(store: store)
-            HealthSection()
+        TabView {
+            Tab("General", systemImage: "gearshape") {
+                Form {
+                    BatterySection(store: store)
+                    IntensitySection()
+                    TimingSection(store: store)
+                    ClaudeGuardSection()
+                    HealthSection()
+                }
+                .formStyle(.grouped)
+            }
+            Tab("Permissions", systemImage: "lock.shield") {
+                PermissionsView()
+            }
         }
-        .formStyle(.grouped)
         .navigationTitle("Settings")
     }
 }
@@ -75,39 +83,72 @@ struct TimingSection: View {
 // MARK: - Claude Code guard
 
 struct ClaudeGuardSection: View {
-    @Bindable var store: MockStore
+    @Environment(ClaudeGuardModel.self) private var guardModel
+    @State private var confirmingInstall = false
+    @State private var devModeMinutes = 60
 
     var body: some View {
         Section {
             LabeledContent("Claude Code guard") {
-                if store.claudeGuardInstalled {
-                    Button("Remove") { store.claudeGuardInstalled = false }
-                } else {
-                    Button("Install...") { store.claudeGuardInstalled = true }
+                switch guardModel.status {
+                case .installed:
+                    Button("Remove") { guardModel.remove() }
+                case .notInstalled:
+                    Button("Install...") { confirmingInstall = true }
+                case .needsRepair:
+                    HStack {
+                        Button("Repair") { guardModel.install() }
+                        Button("Remove") { guardModel.remove() }
+                    }
                 }
             }
-            Text(store.claudeGuardInstalled
-                 ? "Installed in ~/.claude/settings.json. Claude Code is told to use the scheduler instead of booking wakes itself."
-                 : "Not installed. Claude Code could book wakes or keep-awake jobs on its own.")
-                .font(.caption).foregroundStyle(.secondary)
+            Text(statusText).font(.caption).foregroundStyle(.secondary)
+            if let message = guardModel.errorMessage {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.orange)
+            }
             DisclosureGroup("What will be added") {
-                MonospacedLine(text: "hooks.PreToolUse: block pmset schedule / repeat, caffeinate and new launch agents, and point to the agent guide")
+                MonospacedLine(text: "hooks.PreToolUse (matcher Bash): refuse pmset schedule and pmset repeat, and point the agent to the guide")
             }
-            Toggle("Developer mode", isOn: $store.devModeEnabled)
-            if store.devModeEnabled {
-                Picker("Turns off after", selection: $store.devModeMinutes) {
-                    Text("30 minutes").tag(30)
-                    Text("1 hour").tag(60)
-                    Text("4 hours").tag(240)
+            if guardModel.status == .installed {
+                Toggle("Developer mode", isOn: developerModeBinding)
+                if let until = guardModel.developerModeUntil {
+                    Text("Wake commands are allowed until \(until, format: .dateTime.hour().minute()).")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Picker("Turns off after", selection: $devModeMinutes) {
+                        Text("30 minutes").tag(30)
+                        Text("1 hour").tag(60)
+                        Text("4 hours").tag(240)
+                    }
                 }
-                Text("While on, direct wake commands are allowed so tests can book real wakes.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
         } header: {
             Text("Claude Code")
         } footer: {
             Text("Installing edits another tool's settings file. A backup is made first, and Remove only takes out what was added.")
         }
+        .confirmationDialog("Edit Claude Code's settings?", isPresented: $confirmingInstall) {
+            Button("Install") { guardModel.install() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This adds one hook to \(guardModel.settingsPath) after backing it up. Nothing else in the file is changed.")
+        }
+        .task { guardModel.refresh() }
+    }
+
+    private var statusText: LocalizedStringKey {
+        switch guardModel.status {
+        case .installed: "Installed in \(guardModel.settingsPath). Claude Code is told to use the scheduler instead of booking wakes itself."
+        case .notInstalled: "Not installed. Claude Code could book wakes on its own."
+        case .needsRepair: "Partly installed. The hook or its script is missing or out of date."
+        }
+    }
+
+    private var developerModeBinding: Binding<Bool> {
+        Binding(
+            get: { guardModel.developerModeUntil != nil },
+            set: { guardModel.setDeveloperMode(minutes: $0 ? devModeMinutes : nil) })
     }
 }
 
@@ -160,5 +201,7 @@ struct HealthRow: View {
 #Preview {
     SettingsView()
         .environment(MockStore())
+        .environment(PermissionsModel())
+        .environment(ClaudeGuardModel())
         .frame(width: 700, height: 900)
 }

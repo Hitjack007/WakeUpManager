@@ -123,4 +123,6 @@ struct DetailRouter: View {
 #Preview {
     ContentView()
         .environment(MockStore())
+        .environment(PermissionsModel())
+        .environment(ClaudeGuardModel())
 }

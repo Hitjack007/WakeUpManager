@@ -478,7 +478,23 @@ The agent, the socket and the `wakeup` tool are built and were run together on t
 
 Real run: a request from a project folder was held for approval, approved, planned, the Mac was held awake, the job started at its time, the job's own `wakeup done` reached the agent over the socket, and the hold was released. One bug found: the tool reported the folder as `/private/tmp/...` while the approval named `/tmp/...`, so the approval silently matched nothing. Fixed by canonicalising every client path the agent stores or compares, with tests.
 
-Not built yet: the root helper that replaces `sudo pmset`, running the agent and CLI from the app (embedding and registering them), the real macOS notifier, wiring the app's screens to the real scheduler, the Claude Code guard installer, and measuring actual CPU and GPU.
+Not built yet: the root helper that replaces `sudo pmset`, embedding the agent, helper and CLI in the app bundle, wiring the app's screens to the real scheduler (they still show sample data), and measuring actual CPU and GPU.
+
+## What the app does itself, as built
+
+The app is now **not sandboxed** (the project setting was on; it is off, as decided above), because it has to edit `~/.claude/settings.json` and register background services. It links `WakeUpSystem` as well as `WakeUpCore`.
+
+- **Settings has two tabs:** General, and **Permissions**.
+- **Permissions tab:** one row per permission with a status (Allowed, Not asked yet, Waiting for you in System Settings, Turned off, Not available) and a button that brings up the macOS prompt. "Go through them…" walks the outstanding ones one at a time using the same card as DynamicNotch's permission requests (icon, what it is for, a privacy note, Not Now and Allow). The permissions are:
+  - **Notifications:** `UNUserNotificationCenter` authorisation (alert and sound). If it was turned off, the button opens that app's page in System Settings.
+  - **Background scheduler** and **Wake helper:** registered with `SMAppService` (`agent` and `daemon`), which adds them to System Settings > General > Login Items for the user to switch on. If macOS needs approval, the app opens Login Items. The state is re-read whenever the app comes to the front, because switching one on in System Settings doesn't notify the app.
+- **Notices as notifications:** `SystemNotifier` (a `UserNotifier`) shows each notice as a macOS notification, only once notifications are allowed. It never asks for permission itself. It isn't plugged in yet, because the app doesn't host the engine yet.
+- **Claude Code guard:** done by the app, never by hand. `ClaudeGuardInstaller` (in `WakeUpSystem`, 11 tests) adds one `PreToolUse` hook (matcher `Bash`) to `~/.claude/settings.json`, writes `claude-guard.sh` and `agent-guide.md` into `~/Library/Application Support/WakeUpManager/`, and backs the settings file up first (`settings.json.wakeup-backup-DATE`). Remove takes out only that hook and tidies up only what it emptied. A settings file that isn't valid JSON is left alone. Installing asks for confirmation in the app.
+  - The hook refuses `pmset schedule`, `pmset repeat` and `IOPMSchedulePowerEvent` and tells the agent to use `wakeup request` and read the guide. Keep-awake commands such as `caffeinate` are not blocked, to match "What we block".
+  - **Developer mode** is a file holding an expiry time. Only the app writes it, so an agent can't switch it on. The script reads it on every command, so it turns itself off.
+  - The settings file is rewritten as sorted, indented JSON, so key order in it changes the first time.
+
+Not available yet: the two Login Items rows say "This build of the app doesn't contain it yet", because the agent, the root helper and their property lists are not in the app bundle. That needs a helper program (with the XPC link to `pmset`) and build steps to embed them.
 
 ## Wakes booked by other software (audit), as built
 
@@ -507,5 +523,5 @@ Tests cover the parser, the owner classification, the engine's record, state fil
 - **Caffeinate:** How it fits in (keeping the Mac awake while a job runs?).
 - **Privileges / packaging:** Proposed: app + embedded user agent + embedded root helper, registered with `SMAppService`. Awaiting confirmation.
 - **Not yet covered:** overlapping jobs (parallel or sequential, based on intensity), scheduler restart reconciliation, and the FileVault and reboot behaviour.
-- **Code:** `WakeUpCore/` is a Swift package with 176 Swift Testing tests, all passing, and the whole chain proven on this Mac (see "Working end to end"). It has these parts: `WakeUpCore` (the schema types, the schedule and daylight-saving resolver, intensity levels, the battery and missed-job policy, the scheduler engine, the socket messages and client checks); `WakeUpSystem` (the job launcher, battery reader, power assertions, an interim `pmset` wake booker, the socket server and the scheduler agent); `WakeUpCLI` (the `wakeup` command); and two executables, `wakeup` and `wakeup-agent`. The package is linked into the Xcode project.
+- **Code:** `WakeUpCore/` is a Swift package with 187 Swift Testing tests, all passing, and the whole chain proven on this Mac (see "Working end to end"). It has these parts: `WakeUpCore` (the schema types, the schedule and daylight-saving resolver, intensity levels, the battery and missed-job policy, the scheduler engine, the socket messages and client checks); `WakeUpSystem` (the job launcher, battery reader, power assertions, an interim `pmset` wake booker, the socket server and the scheduler agent); `WakeUpCLI` (the `wakeup` command); and two executables, `wakeup` and `wakeup-agent`. The package is linked into the Xcode project.
 - **Spike:** Done for the iMac (see "Spike results"). Battery gates, lid-closed behaviour and the Mac Studio still need testing, and need a MacBook for the first two.

@@ -47,9 +47,6 @@ final class MockStore {
     var highAbove = 60
     var missedGraceMinutes = 5
     var defaultLeadMinutes = 5
-    var claudeGuardInstalled = false
-    var devModeEnabled = false
-    var devModeMinutes = 60
 
     // MARK: Status
 
