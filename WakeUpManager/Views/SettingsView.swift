@@ -16,6 +16,7 @@ struct SettingsView: View {
                     BatterySection(store: store)
                     IntensitySection()
                     TimingSection(store: store)
+                    AppearanceSection()
                     UpdatesSection()
                     CommandLineToolSection()
                     ClaudeGuardSection()
@@ -78,6 +79,29 @@ struct TimingSection: View {
             Text("Timing")
         } footer: {
             Text("A job that is later than this is skipped and you are alerted.")
+        }
+    }
+}
+
+// MARK: - Appearance
+
+struct AppearanceSection: View {
+    @AppStorage(AppAppearance.menuBarKey) private var showMenuBarIcon = true
+    @AppStorage(AppAppearance.dockKey) private var showDockIcon = true
+
+    var body: some View {
+        Section {
+            Toggle("Show in the menu bar", isOn: $showMenuBarIcon)
+            Toggle("Show in the Dock", isOn: $showDockIcon)
+                .onChange(of: showDockIcon) { AppAppearance.apply() }
+        } header: {
+            Text("Appearance")
+        } footer: {
+            if !showMenuBarIcon && !showDockIcon {
+                Text("The app keeps running without an icon and still shows alerts. To open this window again, open WakeUp Manager from Finder or Spotlight.")
+            } else {
+                Text("The scheduler runs in the background either way. The menu bar item shows the next wake and a quick way to check for updates.")
+            }
         }
     }
 }

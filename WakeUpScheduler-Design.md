@@ -521,6 +521,13 @@ The screens now show what the agent reports (`SchedulerStore`, filled by polling
 - **Notifications:** each notice that appears while the app is running is shown as a macOS notification (once allowed). Notices that were already open when the app started are not announced again.
 - **Not real yet:** the CPU and GPU usage columns and the trend suggestion (nothing measures them), and the FileVault warning that the sample data had.
 
+## Updates and releases
+
+- **Sparkle**, set up like DynamicNotch: Sparkle 2.9.1 is a package dependency of the app target (the project file names it, so nothing needs adding in Xcode). Settings > Software updates has the automatic check and download switches and "Check for Updates…", and the menu bar menu has the same button. `SUFeedURL`, `SUPublicEDKey` and `SUEnableAutomaticChecks` are in `Packaging/AppInfo.plist`, merged into the generated Info.plist. The key pair is the one DynamicNotch uses (the private key is in the login keychain), so both apps' updates are signed by the same key.
+- **Feed:** `docs/appcast.xml`, to be served at `https://hitjack007.github.io/WakeUpManager/appcast.xml` by GitHub Pages from `main` and `/docs`. Updates are DMGs on GitHub releases. This only works if the repository is public: a private repository's release files and Pages site can't be fetched by installed copies.
+- **`release.sh`** signs the DMG with Sparkle's `sign_update`, adds the release to the appcast, creates the GitHub release and pushes the appcast. It must be run from `main`. The app isn't sandboxed, so none of the sandbox-related Sparkle helper services are needed.
+- **Appearance:** Settings has switches for the menu bar icon and the Dock icon. With both off the app keeps running without an icon and still shows alerts; opening it again from Finder or Spotlight brings the window back.
+
 ## Building and running it
 
 Done by the build, once the "Embed scheduler programs" Run Script phase is added to the app target (see below):
