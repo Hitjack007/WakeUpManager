@@ -137,20 +137,25 @@ final class PermissionsModel {
             default: return .allowed
             }
         case .openAtLogin:
-            return Self.status(of: SMAppService.mainApp)
+            return Self.status(
+                of: SMAppService.mainApp,
+                notFound: "macOS can't register this copy of the app. Move it to /Applications and open it from there.")
         case .schedulerAgent:
-            return Self.status(of: SMAppService.agent(plistName: Self.agentPlistName))
+            return Self.status(of: SMAppService.agent(plistName: Self.agentPlistName), notFound: Self.notEmbedded)
         case .wakeHelper:
-            return Self.status(of: SMAppService.daemon(plistName: Self.helperPlistName))
+            return Self.status(of: SMAppService.daemon(plistName: Self.helperPlistName), notFound: Self.notEmbedded)
         }
     }
 
-    private static func status(of service: SMAppService) -> PermissionStatus {
+    private static let notEmbedded =
+        "The scheduler programs aren't inside this copy of the app. Add the \"Embed scheduler programs\" build phase, then rebuild."
+
+    private static func status(of service: SMAppService, notFound: String) -> PermissionStatus {
         switch service.status {
         case .enabled: .allowed
         case .requiresApproval: .needsApproval
         case .notRegistered: .notAsked
-        case .notFound: .unavailable("This build of the app doesn't contain it yet.")
+        case .notFound: .unavailable(notFound)
         @unknown default: .unavailable("macOS reported a state this version doesn't know.")
         }
     }

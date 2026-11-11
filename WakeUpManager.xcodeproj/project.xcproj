@@ -36,6 +36,18 @@
         "compile-sources",
         "frameworks",
         "resources",
+        {
+          "kind": "script",
+          "name": "Run Script",
+          "log-environment-variables": true,
+          "run-on-every-build": true,
+          "shell": "/bin/sh",
+          "script": [
+            "# Type a script or drag a script file from your workspace to insert its path.",
+            "$SRCROOT/Packaging/embed-helpers.sh",
+            "",
+          ],
+        },
       ],
       "package-product-members": [
         {
