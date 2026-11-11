@@ -59,9 +59,14 @@ struct SidebarList: View {
     let pendingClients: Int
 
     var body: some View {
-        List(SidebarSection.allCases, selection: $selection) { section in
-            Label(section.title, systemImage: section.symbol)
-                .badge(badge(for: section))
+        // The selection is a `SidebarSection`, not the row's id (a String), so each row needs an
+        // explicit tag or clicking it selects nothing.
+        List(selection: $selection) {
+            ForEach(SidebarSection.allCases) { section in
+                Label(section.title, systemImage: section.symbol)
+                    .badge(badge(for: section))
+                    .tag(section)
+            }
         }
         .safeAreaInset(edge: .bottom) {
             AwakeFooter()
