@@ -93,7 +93,7 @@ struct AppearanceSection: View {
         Section {
             Toggle("Show in the menu bar", isOn: $showMenuBarIcon)
             Toggle("Show in the Dock", isOn: $showDockIcon)
-                .onChange(of: showDockIcon) { AppAppearance.apply() }
+                .onChange(of: showDockIcon) { AppAppearance.apply(keepWindowsInFront: true) }
         } header: {
             Text("Appearance")
         } footer: {
