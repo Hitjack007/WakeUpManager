@@ -8,13 +8,15 @@ import SwiftUI
 struct OverviewView: View {
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 28) {
                 NextWakeCard()
                 StatusRow()
                 AttentionSection()
                 UpcomingSection()
             }
-            .padding(24)
+            .padding(28)
+            .frame(maxWidth: 1100)
+            .frame(maxWidth: .infinity)
         }
         .navigationTitle("Overview")
     }
@@ -22,40 +24,68 @@ struct OverviewView: View {
 
 // MARK: - Next wake
 
+/// The big card at the top: when the Mac wakes next, and for what.
 struct NextWakeCard: View {
     @Environment(SchedulerStore.self) private var store
 
     var body: some View {
-        Card(title: "Next wake") {
+        Group {
             if let job = store.nextWakeJob, let wake = job.plannedWake, let start = job.nextRun {
-                HStack(alignment: .top, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .center, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Next wake", systemImage: "alarm.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.8))
                         Text(wake, format: .dateTime.weekday(.wide).hour().minute())
-                            .font(.largeTitle.weight(.semibold))
+                            .font(.system(size: 42, weight: .bold, design: .rounded))
+                            .minimumScaleFactor(0.6)
+                            .lineLimit(1)
                         Text("in \(Text(wake, style: .relative))")
-                            .foregroundStyle(.secondary)
+                            .font(.title3)
+                            .foregroundStyle(.white.opacity(0.85))
                     }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text(job.name).font(.title3.weight(.medium))
+                    Spacer(minLength: 16)
+                    VStack(alignment: .trailing, spacing: 6) {
+                        Text(job.name).font(.title3.weight(.semibold)).lineLimit(2).multilineTextAlignment(.trailing)
                         Text("\(job.clientName), starts at \(Text(start, format: .dateTime.hour().minute()))")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.white.opacity(0.85))
                         IntensityBadge(level: job.intensity)
+                            .padding(2)
+                            .background(.regularMaterial, in: Capsule())
+                            .environment(\.colorScheme, .light)
                     }
                 }
             } else {
-                Text("Nothing is scheduled.").foregroundStyle(.secondary)
+                HStack(spacing: 16) {
+                    Image(systemName: "moon.zzz.fill").font(.system(size: 34))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Nothing is scheduled").font(.title2.weight(.semibold))
+                        Text("Apps and scripts that book a wake will show up here.")
+                            .foregroundStyle(.white.opacity(0.85))
+                    }
+                    Spacer()
+                }
             }
         }
+        .foregroundStyle(.white)
+        .padding(26)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.dawn, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .shadow(color: .brandIndigo.opacity(0.25), radius: 18, y: 8)
     }
 }
 
 // MARK: - Status tiles
 
 struct StatusRow: View {
+    @Environment(SchedulerStore.self) private var store
+
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            PowerTile()
+        // Tiles share the width and wrap onto a second row when the window is narrow, so nothing is cut off.
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 250, maximum: 420), spacing: 16, alignment: .top)], spacing: 16) {
+            if store.hasBattery {
+                PowerTile()
+            }
             HoldTile()
             BlockingTile()
         }
@@ -71,14 +101,11 @@ struct StatusTile: View {
 
     var body: some View {
         Card(title: nil) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: symbol)
-                    .font(.title2)
-                    .foregroundStyle(tint)
-                    .frame(width: 28)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.caption).foregroundStyle(.secondary)
-                    Text(value).font(.headline)
+            HStack(alignment: .top, spacing: 14) {
+                IconBadge(symbol: symbol, tint: tint, size: 40)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                    Text(value).font(.title3.weight(.semibold))
                     Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
@@ -91,7 +118,9 @@ struct PowerTile: View {
 
     var body: some View {
         StatusTile(
-            symbol: "powerplug.fill", tint: .green, title: "Power",
+            symbol: store.powerDescription == "On battery" ? "battery.50percent" : "powerplug.fill",
+            tint: store.powerDescription == "On battery" ? .orange : .green,
+            title: "Power",
             value: LocalizedStringKey(store.powerDescription), detail: store.powerDetail)
     }
 }
@@ -130,8 +159,8 @@ struct AttentionSection: View {
 
     var body: some View {
         if !store.openAlerts.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Needs attention").font(.headline)
+            VStack(alignment: .leading, spacing: 12) {
+                SectionTitle(text: "Needs attention", count: store.openAlerts.count)
                 ForEach(store.openAlerts) { alert in
                     AlertCard(alert: alert)
                 }
@@ -144,31 +173,45 @@ struct AttentionSection: View {
 
 struct UpcomingSection: View {
     @Environment(SchedulerStore.self) private var store
+    @State private var jobPendingCancel: MockJob?
 
     var body: some View {
-        Card(title: "Coming up") {
-            VStack(spacing: 0) {
-                ForEach(store.upcomingJobs.prefix(5)) { job in
-                    UpcomingRow(job: job)
-                    if job.id != store.upcomingJobs.prefix(5).last?.id {
-                        Divider()
+        VStack(alignment: .leading, spacing: 12) {
+            SectionTitle(text: "Coming up", count: store.upcomingJobs.count)
+            if store.upcomingJobs.isEmpty {
+                Card(title: nil) {
+                    Text("No jobs are waiting to run.").foregroundStyle(.secondary)
+                }
+            } else {
+                Card(title: nil) {
+                    VStack(spacing: 0) {
+                        let shown = Array(store.upcomingJobs.prefix(6))
+                        ForEach(shown) { job in
+                            UpcomingRow(job: job, onCancel: { jobPendingCancel = job })
+                            if job.id != shown.last?.id {
+                                Divider()
+                            }
+                        }
                     }
                 }
             }
         }
+        .cancelJobConfirmation($jobPendingCancel)
     }
 }
 
 struct UpcomingRow: View {
     let job: MockJob
+    let onCancel: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
+            IconBadge(symbol: job.state.symbol, tint: job.state.color, size: 34)
             VStack(alignment: .leading, spacing: 2) {
-                Text(job.name).fontWeight(.medium)
-                Text(job.clientName).font(.caption).foregroundStyle(.secondary)
+                Text(job.name).fontWeight(.medium).lineLimit(1)
+                Text(job.clientName).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
-            Spacer()
+            Spacer(minLength: 12)
             if let start = job.nextRun {
                 VStack(alignment: .trailing, spacing: 2) {
                     WhenText(date: start)
@@ -181,12 +224,16 @@ struct UpcomingRow: View {
             IntensityBadge(level: job.intensity)
             StateBadge(state: job.state)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 9)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button("Cancel Job…", systemImage: "xmark.circle", role: .destructive, action: onCancel)
+        }
     }
 }
 
 #Preview {
     OverviewView()
         .environment(SchedulerStore())
-        .frame(width: 800, height: 700)
+        .frame(width: 900, height: 760)
 }

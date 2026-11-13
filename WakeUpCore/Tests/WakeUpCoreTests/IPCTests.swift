@@ -19,6 +19,26 @@ struct MessageTests {
         return try WakeUpJSON.makeDecoder().decode(ClientMessage.self, from: data)
     }
 
+    @Test func aStatusFromAnOlderAgentHasNoBuildAndStillReads() throws {
+        // Older agents never sent `agentBuild`. The app must still read their status, and see "unknown".
+        let old = StatusReport(holdingAwake: false, clients: [], executions: [], recentHistory: [], openNotices: [])
+        let data = try WakeUpJSON.makeCompactEncoder().encode(ServerMessage.report(old))
+        #expect(!String(decoding: data, as: UTF8.self).contains("agentBuild"))
+        let decoded = try WakeUpJSON.makeDecoder().decode(ServerMessage.self, from: data)
+        #expect(decoded.status?.agentBuild == nil)
+    }
+
+    @Test func aBuildFingerprintFollowsTheFileContents() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("fingerprint-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("one".utf8).write(to: url)
+        let first = try #require(BuildFingerprint.ofFile(at: url))
+        #expect(BuildFingerprint.ofFile(at: url) == first)
+        try Data("two".utf8).write(to: url)
+        #expect(BuildFingerprint.ofFile(at: url) != first)
+        #expect(BuildFingerprint.ofFile(at: url.appendingPathExtension("missing")) == nil)
+    }
+
     @Test func aSubmitMessageRoundTrips() throws {
         let request = EngineFixtures.request(recurrence: Recurrence(frequency: .daily))
         let message = ClientMessage.submit(request)
@@ -43,6 +63,7 @@ struct MessageTests {
             .resolveConflict(jobKey: "/Users/mark/Proj#job", allowBoth: true),
             .resolveNotice(id: UUID()),
             .setJobSettings(jobKey: "/Users/mark/Proj#job", settings: JobPowerSettings(minimumBatteryPercent: 50, allowHighOnBattery: true)),
+            .removeJob(jobKey: "/Users/mark/Proj#job"),
         ]
         for message in messages {
             #expect(message.isControl)

@@ -22,6 +22,8 @@ public struct ClientMessage: Codable, Equatable, Sendable {
         case setJobSettings
         case allowWakeOwner
         case updateSettings
+        /// Removes any job by its key. `cancelJob` only works for the client that owns the job; this is the app's way.
+        case removeJob
     }
 
     public var kind: Kind
@@ -75,7 +77,7 @@ public struct ClientMessage: Codable, Equatable, Sendable {
         switch kind {
         case .ping, .submit, .complete, .cancelJob, .status: false
         case .approveClient, .denyClient, .revokeClient, .extend, .stop, .resolveConflict, .resolveNotice,
-             .setJobSettings, .allowWakeOwner, .updateSettings: true
+             .setJobSettings, .allowWakeOwner, .updateSettings, .removeJob: true
         }
     }
 
@@ -117,6 +119,10 @@ public struct ClientMessage: Codable, Equatable, Sendable {
     public static func updateSettings(_ settings: SchedulerSettings) -> ClientMessage {
         ClientMessage(kind: .updateSettings, userSettings: settings)
     }
+
+    public static func removeJob(jobKey: String) -> ClientMessage {
+        ClientMessage(kind: .removeJob, jobKey: jobKey)
+    }
 }
 
 /// A snapshot of the scheduler for the `status` message and the app's screens.
@@ -132,13 +138,16 @@ public struct StatusReport: Codable, Equatable, Sendable {
     public var jobs: [JobEntry]
     /// What the user has set in the app.
     public var userSettings: SchedulerSettings
+    /// Which build of the agent answered (see `BuildFingerprint`). Agents from before this existed leave it empty.
+    public var agentBuild: String?
 
     public init(
         holdingAwake: Bool, clients: [ClientRecord], executions: [Execution],
         recentHistory: [Execution], openNotices: [Notice],
         blockedWakes: [BlockedWake] = [], allowedWakeOwners: [String] = [], jobs: [JobEntry] = [],
-        userSettings: SchedulerSettings = SchedulerSettings()
+        userSettings: SchedulerSettings = SchedulerSettings(), agentBuild: String? = nil
     ) {
+        self.agentBuild = agentBuild
         self.jobs = jobs
         self.userSettings = userSettings
         self.holdingAwake = holdingAwake

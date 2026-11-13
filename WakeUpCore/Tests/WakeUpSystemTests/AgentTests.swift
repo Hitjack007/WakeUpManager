@@ -109,6 +109,9 @@ struct SchedulerAgentTests {
         let status = try #require(try harness.client.send(.status()).status)
         #expect(status.executions.isEmpty)
         #expect(!status.holdingAwake)
+        // The agent says which build it is, so the app can tell when an older one is still running.
+        #expect(status.agentBuild != nil)
+        #expect(status.agentBuild == BuildFingerprint.ofThisProgram)
     }
 
     @Test func rejectsARequestFromTheWrongLocation() throws {
@@ -195,6 +198,32 @@ struct SchedulerAgentTests {
         #expect(status.recentHistory.first?.state == .completed)
         #expect(status.recentHistory.first?.message == "done")
         #expect(!status.holdingAwake)
+    }
+
+    @Test func theAppCanRemoveAJobAndEverythingPlannedForIt() throws {
+        let harness = try makeHarness()
+        defer { harness.stop() }
+
+        _ = try harness.client.send(.submit(echoRequest(startingIn: 3600, job: "later")))
+        _ = try harness.client.send(.approveClient(path: projectPath))
+        let before = try #require(try harness.client.send(.status()).status)
+        let key = try #require(before.jobs.first?.key)
+        #expect(before.executions.count == 1)
+
+        #expect(try harness.client.send(.removeJob(jobKey: key)).ok)
+
+        let after = try #require(try harness.client.send(.status()).status)
+        #expect(after.jobs.isEmpty)
+        #expect(after.executions.isEmpty)
+    }
+
+    @Test func removingAJobNeedsTheApp() throws {
+        let harness = try makeHarness(executable: "/usr/local/bin/wakeup")
+        defer { harness.stop() }
+
+        let reply = try harness.client.send(.removeJob(jobKey: "\(projectPath)#echo"))
+        #expect(!reply.ok)
+        #expect(reply.error == "Only the WakeUp Manager app can do that.")
     }
 
     @Test func aRunningJobCanBeStoppedByTheApp() throws {

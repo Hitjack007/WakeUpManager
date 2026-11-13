@@ -157,7 +157,7 @@ public final class SchedulerAgent: @unchecked Sendable {
             return .accepted()
 
         case .approveClient, .denyClient, .revokeClient, .extend, .stop, .resolveConflict, .resolveNotice,
-             .setJobSettings, .allowWakeOwner, .updateSettings:
+             .setJobSettings, .allowWakeOwner, .updateSettings, .removeJob:
             guard let pid, verifier.isTrusted(peerProcess: pid, trustedPaths: configuration.trustedControlPaths) else {
                 return .failure("Only the WakeUp Manager app can do that.")
             }
@@ -197,6 +197,9 @@ public final class SchedulerAgent: @unchecked Sendable {
         case .updateSettings:
             guard let settings = message.userSettings else { return missing("settings") }
             engine.updateUserSettings(settings)
+        case .removeJob:
+            guard let key = message.jobKey else { return missing("a job key") }
+            engine.cancelJob(key: key, now: now)
         default:
             return .failure("That is not a control message.")
         }
@@ -227,7 +230,8 @@ public final class SchedulerAgent: @unchecked Sendable {
             blockedWakes: Array(state.blockedWakes.suffix(50).reversed()),
             allowedWakeOwners: state.allowedWakeOwners.sorted(),
             jobs: state.jobs.values.sorted { $0.key < $1.key },
-            userSettings: engine.userSettings)
+            userSettings: engine.userSettings,
+            agentBuild: BuildFingerprint.ofThisProgram)
     }
 
     // MARK: Wakes booked by other software
