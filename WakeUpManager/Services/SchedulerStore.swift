@@ -41,6 +41,8 @@ final class SchedulerStore {
     var agentReachable = false
     /// Why the agent refused or couldn't do the last thing the app asked, if it didn't work.
     var lastActionError: String?
+    /// Whether this launch has already restarted an out-of-date agent, so it only happens once.
+    var agentRestartAttempted = false
     /// The execution behind each alert, so Extend and Stop know what they act on.
     var alertExecutions: [String: UUID] = [:]
     /// The job behind each alert, for overlap decisions.
@@ -50,7 +52,10 @@ final class SchedulerStore {
     /// When the scheduler has booked wakes, so the wake log can tell its wakes from other ones.
     var knownWakeTimes: [Date] = []
     var powerDescription = "Plugged in"
-    var powerDetail = "No battery (iMac)"
+    var powerDetail = ""
+    /// Whether this Mac has its own battery (a MacBook, plugged in or not). Battery settings only make
+    /// sense then, so the screens hide them on an iMac, Mac mini or Mac Studio. Assumed true until known.
+    var hasBattery = true
     var holdingAwake = false
 
     // MARK: Cached groups (recomputed when their inputs change, not on every body evaluation)
@@ -60,6 +65,10 @@ final class SchedulerStore {
     private(set) var deniedClients: [MockClient] = []
     private(set) var upcomingJobs: [MockJob] = []
     private(set) var runningJob: MockJob?
+
+    /// Whether the scheduler is holding the Mac awake. The agent says so, which also covers the moments before
+    /// a job starts, or a job is running.
+    var isHoldingAwake: Bool { holdingAwake || runningJob != nil }
     private(set) var nextWakeJob: MockJob?
     private(set) var openAlerts: [MockAlert] = []
     private(set) var resolvedAlerts: [MockAlert] = []
@@ -154,6 +163,14 @@ final class SchedulerStore {
     }
 
     // MARK: Actions
+
+    /// Removes a job and everything planned for it. A running job is stopped. The app that scheduled it
+    /// can submit it again later.
+    func cancelJob(id: String) {
+        send(.removeJob(jobKey: id))
+        // Take it off the screen now; the next status from the agent confirms it.
+        jobs.removeAll { $0.id == id }
+    }
 
     func approve(clientID: String) {
         if send(.approveClient(path: clientID)) { return }

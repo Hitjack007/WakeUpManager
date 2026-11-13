@@ -13,7 +13,9 @@ struct SettingsView: View {
         TabView {
             Tab("General", systemImage: "gearshape") {
                 Form {
-                    BatterySection(store: store)
+                    if store.hasBattery {
+                        BatterySection(store: store)
+                    }
                     IntensitySection()
                     TimingSection(store: store)
                     AppearanceSection()

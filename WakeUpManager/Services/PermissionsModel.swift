@@ -137,26 +137,34 @@ final class PermissionsModel {
             default: return .allowed
             }
         case .openAtLogin:
-            return Self.status(
-                of: SMAppService.mainApp,
-                notFound: "macOS can't register this copy of the app. Move it to /Applications and open it from there.")
+            return status(of: SMAppService.mainApp, kind: kind, bundledFile: nil)
         case .schedulerAgent:
-            return Self.status(of: SMAppService.agent(plistName: Self.agentPlistName), notFound: Self.notEmbedded)
+            return status(of: SMAppService.agent(plistName: Self.agentPlistName), kind: kind,
+                          bundledFile: "Contents/Library/LaunchAgents/\(Self.agentPlistName)")
         case .wakeHelper:
-            return Self.status(of: SMAppService.daemon(plistName: Self.helperPlistName), notFound: Self.notEmbedded)
+            return status(of: SMAppService.daemon(plistName: Self.helperPlistName), kind: kind,
+                          bundledFile: "Contents/Library/LaunchDaemons/\(Self.helperPlistName)")
         }
     }
 
-    private static let notEmbedded =
-        "The scheduler programs aren't inside this copy of the app. Add the \"Embed scheduler programs\" build phase, then rebuild."
+    /// Why macOS refused to register a service, kept so the row can show it.
+    private var registrationErrors: [PermissionKind: String] = [:]
 
-    private static func status(of service: SMAppService, notFound: String) -> PermissionStatus {
+    /// macOS answers `notFound` for a service it has no record of yet, which is every service before its first
+    /// `register()`. So `notFound` only means "unavailable" if the file isn't in the app, or registering was tried and failed.
+    private func status(of service: SMAppService, kind: PermissionKind, bundledFile: String?) -> PermissionStatus {
         switch service.status {
-        case .enabled: .allowed
-        case .requiresApproval: .needsApproval
-        case .notRegistered: .notAsked
-        case .notFound: .unavailable(notFound)
-        @unknown default: .unavailable("macOS reported a state this version doesn't know.")
+        case .enabled: return .allowed
+        case .requiresApproval: return .needsApproval
+        case .notRegistered: return .notAsked
+        case .notFound:
+            if let reason = registrationErrors[kind] { return .unavailable(reason) }
+            if let bundledFile, !FileManager.default.fileExists(
+                atPath: Bundle.main.bundleURL.appending(path: bundledFile).path) {
+                return .unavailable("This copy of the app doesn't contain the scheduler programs. Rebuild it so the \"Run Script\" build phase runs.")
+            }
+            return .notAsked
+        @unknown default: return .unavailable("macOS reported a state this version doesn't know.")
         }
     }
 
@@ -182,24 +190,26 @@ final class PermissionsModel {
             }
 
         case .openAtLogin:
-            register(SMAppService.mainApp, name: "open at login")
+            register(SMAppService.mainApp, kind: kind, name: "open at login")
 
         case .schedulerAgent:
-            register(SMAppService.agent(plistName: Self.agentPlistName), name: "scheduler agent")
+            register(SMAppService.agent(plistName: Self.agentPlistName), kind: kind, name: "scheduler agent")
 
         case .wakeHelper:
-            register(SMAppService.daemon(plistName: Self.helperPlistName), name: "wake helper")
+            register(SMAppService.daemon(plistName: Self.helperPlistName), kind: kind, name: "wake helper")
         }
         await refresh()
     }
 
     /// Registering adds the service to Login Items. If macOS wants the user's say-so, send them there.
-    private func register(_ service: SMAppService, name: String) {
+    private func register(_ service: SMAppService, kind: PermissionKind, name: String) {
+        registrationErrors[kind] = nil
         do {
             try service.register()
         } catch {
             // `requiresApproval` also arrives as an error on some versions, so look at the state after.
             Self.log.notice("Registering the \(name) reported: \(error.localizedDescription)")
+            if service.status == .notFound { registrationErrors[kind] = error.localizedDescription }
         }
         if service.status == .requiresApproval {
             SMAppService.openSystemSettingsLoginItems()

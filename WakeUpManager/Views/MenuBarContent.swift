@@ -19,8 +19,12 @@ struct MenuBarContent: View {
         } else {
             Text("Nothing scheduled")
         }
-        if let running = store.runningJob {
-            Text("Holding awake: \(running.name)")
+        if store.isHoldingAwake {
+            if let running = store.runningJob {
+                Text("Holding awake: \(running.name)")
+            } else {
+                Text("Holding the Mac awake")
+            }
         }
         Divider()
         if store.openAlertCount > 0 {

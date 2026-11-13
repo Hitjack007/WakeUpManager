@@ -15,7 +15,7 @@ struct OverviewView: View {
                 UpcomingSection()
             }
             .padding(28)
-            .frame(maxWidth: 1100)
+            .frame(maxWidth: 980)
             .frame(maxWidth: .infinity)
         }
         .navigationTitle("Overview")
@@ -31,29 +31,12 @@ struct NextWakeCard: View {
     var body: some View {
         Group {
             if let job = store.nextWakeJob, let wake = job.plannedWake, let start = job.nextRun {
+                // One fixed layout: the time shrinks and the job text wraps before anything is cut off.
                 HStack(alignment: .center, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label("Next wake", systemImage: "alarm.fill")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.8))
-                        Text(wake, format: .dateTime.weekday(.wide).hour().minute())
-                            .font(.system(size: 42, weight: .bold, design: .rounded))
-                            .minimumScaleFactor(0.6)
-                            .lineLimit(1)
-                        Text("in \(Text(wake, style: .relative))")
-                            .font(.title3)
-                            .foregroundStyle(.white.opacity(0.85))
-                    }
+                    wakeTime(wake)
                     Spacer(minLength: 16)
-                    VStack(alignment: .trailing, spacing: 6) {
-                        Text(job.name).font(.title3.weight(.semibold)).lineLimit(2).multilineTextAlignment(.trailing)
-                        Text("\(job.clientName), starts at \(Text(start, format: .dateTime.hour().minute()))")
-                            .foregroundStyle(.white.opacity(0.85))
-                        IntensityBadge(level: job.intensity)
-                            .padding(2)
-                            .background(.regularMaterial, in: Capsule())
-                            .environment(\.colorScheme, .light)
-                    }
+                    jobSummary(job, start: start, alignment: .trailing)
+                        .frame(maxWidth: 320, alignment: .trailing)
                 }
             } else {
                 HStack(spacing: 16) {
@@ -73,6 +56,34 @@ struct NextWakeCard: View {
         .background(.dawn, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .shadow(color: .brandIndigo.opacity(0.25), radius: 18, y: 8)
     }
+
+    private func wakeTime(_ wake: Date) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Next wake", systemImage: "alarm.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.8))
+            Text(wake, format: .dateTime.weekday(.wide).hour().minute())
+                .font(.system(size: 42, weight: .bold, design: .rounded))
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+            Text("in \(Text(wake, style: .relative))")
+                .font(.title3)
+                .foregroundStyle(.white.opacity(0.85))
+        }
+    }
+
+    private func jobSummary(_ job: MockJob, start: Date, alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 6) {
+            Text(job.name).font(.title3.weight(.semibold)).lineLimit(2)
+            Text("\(job.clientName), starts at \(Text(start, format: .dateTime.hour().minute()))")
+                .foregroundStyle(.white.opacity(0.85))
+            IntensityBadge(level: job.intensity)
+                .padding(2)
+                .background(.regularMaterial, in: Capsule())
+                .environment(\.colorScheme, .light)
+        }
+        .multilineTextAlignment(alignment == .trailing ? .trailing : .leading)
+    }
 }
 
 // MARK: - Status tiles
@@ -81,14 +92,16 @@ struct StatusRow: View {
     @Environment(SchedulerStore.self) private var store
 
     var body: some View {
-        // Tiles share the width and wrap onto a second row when the window is narrow, so nothing is cut off.
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 250, maximum: 420), spacing: 16, alignment: .top)], spacing: 16) {
-            if store.hasBattery {
-                PowerTile()
-            }
-            HoldTile()
-            BlockingTile()
+        // The tiles share the full width, however many there are (an iMac has no Power tile), and their text wraps.
+        HStack(alignment: .top, spacing: 16) { tiles }
+    }
+
+    @ViewBuilder private var tiles: some View {
+        if store.hasBattery {
+            PowerTile()
         }
+        HoldTile()
+        BlockingTile()
     }
 }
 
@@ -100,13 +113,13 @@ struct StatusTile: View {
     let detail: String
 
     var body: some View {
-        Card(title: nil) {
+        Card(title: nil, minHeight: 96) {
             HStack(alignment: .top, spacing: 14) {
                 IconBadge(symbol: symbol, tint: tint, size: 40)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(.caption.weight(.medium)).foregroundStyle(.secondary)
                     Text(value).font(.title3.weight(.semibold))
-                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 }
             }
         }
@@ -129,10 +142,11 @@ struct HoldTile: View {
     @Environment(SchedulerStore.self) private var store
 
     var body: some View {
-        if let job = store.runningJob {
+        if store.isHoldingAwake {
             StatusTile(
                 symbol: "bolt.fill", tint: .green, title: "Awake hold",
-                value: "Holding the Mac awake", detail: job.name)
+                value: "Holding the Mac awake",
+                detail: store.runningJob?.name ?? "Getting ready for the next job.")
         } else {
             StatusTile(
                 symbol: "moon.zzz", tint: .secondary, title: "Awake hold",
@@ -237,3 +251,11 @@ struct UpcomingRow: View {
         .environment(SchedulerStore())
         .frame(width: 900, height: 760)
 }
+#Preview("Mac without a battery, wide window") {
+    let store = SchedulerStore()
+    store.hasBattery = false
+    return OverviewView()
+        .environment(store)
+        .frame(width: 1400, height: 760)
+}
+

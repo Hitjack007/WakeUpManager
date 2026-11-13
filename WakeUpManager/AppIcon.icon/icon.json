@@ -1,0 +1,100 @@
+{
+  "fill": {
+    "linear-gradient": [
+      "display-p3:0.17000,0.16500,0.47000,1.00000",
+      "display-p3:1.00000,0.56000,0.42000,1.00000"
+    ]
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "Moon.png",
+          "name": "Moon"
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    },
+    {
+      "layers": [
+        {
+          "image-name": "Hands.png",
+          "name": "Hands"
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.4
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    },
+    {
+      "layers": [
+        {
+          "image-name": "Ticks.png",
+          "name": "Ticks"
+        },
+        {
+          "fill-specializations": [
+            {
+              "appearance": "dark",
+              "value": "automatic"
+            }
+          ],
+          "image-name": "Face.png",
+          "name": "Clock Face"
+        },
+        {
+          "image-name": "Bezel.png",
+          "name": "Bezel"
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    },
+    {
+      "layers": [
+        {
+          "image-name": "Stars.png",
+          "name": "Stars"
+        }
+      ],
+      "opacity-specializations": [
+        {
+          "value": 0
+        },
+        {
+          "appearance": "dark",
+          "value": 1
+        }
+      ],
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

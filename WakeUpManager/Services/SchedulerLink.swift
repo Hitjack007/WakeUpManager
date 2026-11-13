@@ -47,12 +47,45 @@ extension SchedulerStore {
             if let report = reply.status {
                 apply(report)
                 agentReachable = true
+                await restartAgentIfOutOfDate(report)
             }
         } catch {
             agentReachable = false
             health = [HealthItem(
                 id: "agent", title: "Scheduler agent",
                 detail: "Not running. Switch it on in Settings > Permissions.", status: .problem)]
+        }
+    }
+
+    /// The agent keeps running the program it started with, so after the app is updated or replaced it can be an
+    /// older build than the one now inside the app (it then wouldn't understand newer messages). When the two
+    /// differ, ask launchd to restart the agent, which starts the new one. Never while a job is running, because
+    /// that would stop the job; it tries again on the next refresh instead.
+    func restartAgentIfOutOfDate(_ report: StatusReport) async {
+        guard !agentRestartAttempted else { return }
+        let bundled = Bundle.main.bundleURL.appending(path: "Contents/Helpers/wakeup-agent")
+        guard let expected = BuildFingerprint.ofFile(at: bundled), report.agentBuild != expected else { return }
+        guard !report.executions.contains(where: { $0.state.isActive }) else { return }
+
+        agentRestartAttempted = true
+        let failure: String? = await Task.detached {
+            let process = Process()
+            process.executableURL = URL(filePath: "/bin/launchctl")
+            process.arguments = ["kickstart", "-k", "gui/\(getuid())/com.wakeupmanager.agent"]
+            let errors = Pipe()
+            process.standardError = errors
+            do {
+                try process.run()
+                process.waitUntilExit()
+            } catch {
+                return error.localizedDescription
+            }
+            guard process.terminationStatus != 0 else { return nil }
+            return String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }.value
+        if let failure {
+            lastActionError = "The scheduler is an older version and couldn't be restarted (\(failure)). Switch it off and on in System Settings > Login Items."
         }
     }
 
@@ -174,6 +207,7 @@ extension SchedulerStore {
         knownWakeTimes = (report.executions + report.recentHistory).map(\.wakeAt)
         holdingAwake = report.holdingAwake
         let power = BatteryPowerSensor().current()
+        hasBattery = power.batteryPercent != nil
         switch (power.source, power.batteryPercent) {
         case (.ac, nil): powerDescription = "Plugged in"; powerDetail = "No battery"
         case (.ac, let percent?): powerDescription = "Plugged in"; powerDetail = "Battery at \(percent)%"

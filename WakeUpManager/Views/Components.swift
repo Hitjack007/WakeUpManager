@@ -68,6 +68,8 @@ struct StateBadge: View {
 /// A titled rounded container.
 struct Card<Content: View>: View {
     let title: LocalizedStringKey?
+    /// Cards side by side can ask for the same minimum height so their edges line up.
+    var minHeight: CGFloat?
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -77,7 +79,7 @@ struct Card<Content: View>: View {
             }
             content
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
         .padding(18)
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
@@ -119,6 +121,41 @@ struct IconBadge: View {
             .foregroundStyle(tint)
             .frame(width: size, height: size)
             .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: size * 0.3, style: .continuous))
+    }
+}
+
+// MARK: - Cancelling a job
+
+extension View {
+    /// Asks "are you sure?" whenever `job` is set, and removes the job if the user confirms.
+    /// `onCancelled` runs after it is removed, for example to clear a selection.
+    func cancelJobConfirmation(_ job: Binding<MockJob?>, onCancelled: ((MockJob) -> Void)? = nil) -> some View {
+        modifier(CancelJobConfirmation(job: job, onCancelled: onCancelled))
+    }
+}
+
+struct CancelJobConfirmation: ViewModifier {
+    @Environment(SchedulerStore.self) private var store
+    @Binding var job: MockJob?
+    var onCancelled: ((MockJob) -> Void)?
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog(
+            "Cancel this job?",
+            isPresented: Binding(get: { job != nil }, set: { if !$0 { job = nil } }),
+            titleVisibility: .visible,
+            presenting: job
+        ) { job in
+            let running = job.state == .running || job.state == .overrunning
+            Button(running ? "Stop and Remove Job" : "Cancel Job", role: .destructive) {
+                store.cancelJob(id: job.id)
+                onCancelled?(job)
+            }
+            Button("Keep Job", role: .cancel) {}
+        } message: { job in
+            let running = job.state == .running || job.state == .overrunning
+            Text("\(job.name) will be removed along with every run planned for it\(running ? ", and it will be stopped now" : ""). \(job.clientName) can schedule it again.")
+        }
     }
 }
 

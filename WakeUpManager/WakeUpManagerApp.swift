@@ -7,6 +7,8 @@
 
 import OSLog
 import SwiftUI
+import WakeUpCore
+import WakeUpSystem
 
 /// When the app has a Dock icon.
 enum DockIconMode: String, CaseIterable, Identifiable {
@@ -107,6 +109,8 @@ struct WakeUpManagerApp: App {
     private static func makeLiveStore() -> SchedulerStore {
         let store = SchedulerStore(sampleData: false)
         store.link = SchedulerLink()
+        // Known straight away, so a Mac without a battery never flashes the battery settings.
+        store.hasBattery = BatteryPowerSensor().current().batteryPercent != nil
         // Lives as long as the app does, so notices still arrive with the window closed.
         Task {
             let notifier = SystemNotifier()
@@ -124,11 +128,16 @@ struct WakeUpManagerApp: App {
                 .environment(commandLineTool)
                 .environment(softwareUpdater)
         }
+        .defaultSize(width: 1020, height: 720)
 
-        MenuBarExtra("WakeUp Manager", systemImage: "alarm", isInserted: $showMenuBarIcon) {
+        MenuBarExtra(isInserted: $showMenuBarIcon) {
             MenuBarContent()
                 .environment(store)
                 .environment(softwareUpdater)
+        } label: {
+            // A template image, so macOS tints it for light, dark and highlighted menu bars.
+            Image("MenuBarIcon")
+                .accessibilityLabel("WakeUp Manager")
         }
     }
 }

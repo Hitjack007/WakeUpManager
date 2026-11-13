@@ -49,7 +49,9 @@ struct ContentView: View {
         } detail: {
             DetailRouter(section: selection ?? .overview)
         }
-        .frame(minWidth: 1020, minHeight: 640)
+        // Compact on purpose: the cards re-flow to fit, so the window only needs room for the sidebar plus
+        // a readable column (and the job inspector when it is open).
+        .frame(minWidth: 900, minHeight: 600)
     }
 }
 
@@ -82,19 +84,25 @@ struct SidebarList: View {
     }
 }
 
-/// A one-line status at the bottom of the sidebar: is the scheduler holding the Mac awake right now?
+/// A one-line status at the bottom of the sidebar: holding the Mac awake right now, or else when it wakes next.
 struct AwakeFooter: View {
     @Environment(SchedulerStore.self) private var store
 
     var body: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(store.runningJob == nil ? Color.secondary : Color.green)
+                .fill(store.isHoldingAwake ? Color.green : Color.secondary)
                 .frame(width: 8, height: 8)
-            if let job = store.runningJob {
-                Text("Holding awake: \(job.name)")
+            if store.isHoldingAwake {
+                if let job = store.runningJob {
+                    Text("Holding awake: \(job.name)")
+                } else {
+                    Text("Holding the Mac awake")
+                }
+            } else if let wake = store.nextWakeJob?.plannedWake {
+                Text("Next wake \(Text(wake, format: .dateTime.weekday(.abbreviated).hour().minute()))")
             } else {
-                Text("Not holding the Mac awake")
+                Text("Nothing scheduled")
             }
         }
         .font(.caption)
