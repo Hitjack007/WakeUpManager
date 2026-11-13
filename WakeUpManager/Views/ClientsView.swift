@@ -40,11 +40,16 @@ struct ApprovedClientsSection: View {
 
     var body: some View {
         Card(title: "Approved") {
-            VStack(spacing: 0) {
-                ForEach(store.approvedClients) { client in
-                    ApprovedClientRow(client: client)
-                    if client.id != store.approvedClients.last?.id {
-                        Divider()
+            if store.approvedClients.isEmpty {
+                Text("No app or project is approved yet. When one asks the scheduler for a wake, it will wait here for your approval.")
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(store.approvedClients) { client in
+                        ApprovedClientRow(client: client)
+                        if client.id != store.approvedClients.last?.id {
+                            Divider()
+                        }
                     }
                 }
             }
@@ -74,10 +79,7 @@ struct ClientIdentity: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: kind == .app ? "macwindow" : "folder.fill")
-                .font(.title2)
-                .foregroundStyle(.tint)
-                .frame(width: 28)
+            IconBadge(symbol: kind == .app ? "macwindow" : "folder.fill", tint: .accentColor)
             VStack(alignment: .leading, spacing: 2) {
                 Text(name).fontWeight(.medium)
                 Text(path)

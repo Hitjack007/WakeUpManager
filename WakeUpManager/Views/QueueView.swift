@@ -16,7 +16,9 @@ struct QueueView: View {
         let waiting = store.jobs
             .filter { $0.state == .scheduled || $0.state == .awaitingApproval }
             .sorted { ($0.nextRun ?? .distantFuture) < ($1.nextRun ?? .distantFuture) }
-        let finished = store.jobs.filter { [.completed, .failed, .skipped].contains($0.state) }
+        // Completed jobs are done, so they live in Activity rather than the queue. Failed and skipped ones
+        // stay here because they still need a look.
+        let finished = store.jobs.filter { [.failed, .skipped].contains($0.state) }
         return [
             QueueGroup(id: "running", title: "Running now", jobs: running),
             QueueGroup(id: "scheduled", title: "Scheduled", jobs: waiting),
@@ -26,9 +28,9 @@ struct QueueView: View {
 
     private var list: some View {
         Group {
-            if store.jobs.isEmpty {
+            if groups.isEmpty {
                 ContentUnavailableView(
-                    "No jobs yet", systemImage: "calendar.badge.clock",
+                    "Nothing in the queue", systemImage: "calendar.badge.clock",
                     description: Text("Apps and scripts that ask the scheduler to wake this Mac will appear here."))
             } else {
                 ScrollView {

@@ -52,6 +52,18 @@ struct RunsTab: View {
     var body: some View {
         VStack(spacing: 0) {
             TrendBanner()
+            if store.runs.isEmpty {
+                ContentUnavailableView(
+                    "No runs yet", systemImage: "clock.arrow.circlepath",
+                    description: Text("Jobs show up here after they have run."))
+            } else {
+                runsTable
+            }
+        }
+    }
+
+    private var runsTable: some View {
+        Group {
             Table(store.runs) {
                 TableColumn("Job") { run in
                     VStack(alignment: .leading, spacing: 2) {
@@ -165,11 +177,16 @@ struct BlockedWakesTab: View {
                 Text("Wakes booked by other apps are cancelled. Apple's own wakes are never touched.")
                     .foregroundStyle(.secondary)
                 Card(title: nil) {
-                    VStack(spacing: 0) {
-                        ForEach(store.blockedWakes) { wake in
-                            BlockedWakeRow(wake: wake)
-                            if wake.id != store.blockedWakes.last?.id {
-                                Divider()
+                    if store.blockedWakes.isEmpty {
+                        Label("No wakes have been blocked.", systemImage: "checkmark.shield")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(store.blockedWakes) { wake in
+                                BlockedWakeRow(wake: wake)
+                                if wake.id != store.blockedWakes.last?.id {
+                                    Divider()
+                                }
                             }
                         }
                     }

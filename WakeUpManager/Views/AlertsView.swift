@@ -46,7 +46,7 @@ struct ResolvedAlertsSection: View {
 
     var body: some View {
         if !store.resolvedAlerts.isEmpty {
-            Text("Resolved").font(.headline).padding(.top, 12)
+            SectionTitle(text: "Resolved", count: store.resolvedAlerts.count).padding(.top, 12)
             ForEach(store.resolvedAlerts) { alert in
                 AlertCard(alert: alert)
             }
@@ -84,10 +84,7 @@ struct AlertCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: alert.kind.symbol)
-                .font(.title2)
-                .foregroundStyle(alert.kind.tint)
-                .frame(width: 28)
+            IconBadge(symbol: alert.kind.symbol, tint: alert.kind.tint)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(alert.title).font(.headline)
@@ -104,7 +101,11 @@ struct AlertCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(.separator.opacity(0.5))
+        }
         .opacity(alert.resolved ? 0.6 : 1)
     }
 }
